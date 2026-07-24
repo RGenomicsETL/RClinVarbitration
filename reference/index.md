@@ -16,7 +16,7 @@
 ## Parquet outputs
 
 - [`rclinvarbitration_export_clinvarbitration_parquet()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_export_clinvarbitration_parquet.md)
-  : Export an allele-level ClinVarbitration-compatible Parquet file
+  : Export ClinVarbitration decisions to Parquet
 - [`rclinvarbitration_reproduce_clinvarbitration_parquet()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_reproduce_clinvarbitration_parquet.md)
   : Reproduce ClinVarbitration decisions from archived ClinVar flat
   files

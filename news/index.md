@@ -2,6 +2,19 @@
 
 ## RClinVarbitration 0.1.1
 
+- Add an enhanced disease-decision Parquet schema with a stable record
+  key, complete-row SHA-256 receipt, policy counts, and deterministic
+  nested SCV, RCV, and gene receipts. RCV items keep their own disease
+  keys instead of implying equivalence with an SCV disease key. The
+  source release receipt remains separate so DuckLake snapshot changes,
+  rather than a second package-local delta engine, remain the change
+  authority.
+
+- Add `clinvar_gene_disease_summaries` with descriptive,
+  policy-versioned ClinVar evidence strata. These support retrieval and
+  temporal reanalysis but are not represented as gene-validity
+  classifications.
+
 - Add `submitter_exclusions` to the XML-derived Parquet exporter. Direct
   exclusions are normalized case-insensitively, combined with a selected
   named profile, and applied without deleting imported source

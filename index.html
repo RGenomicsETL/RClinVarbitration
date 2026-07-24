@@ -144,7 +144,7 @@
 <td align="left">
 <code>clinvar_rcv_assertions</code>, <code>clinvar_scv_assertions</code>
 </td>
-<td align="left">disease aggregates and individual submissions</td>
+<td align="left">condition-specific aggregates and individual submissions</td>
 </tr>
 <tr>
 <td align="left">
@@ -167,6 +167,10 @@
 <td align="left">policy-versioned disease/classification counts by gene</td>
 </tr>
 <tr>
+<td align="left"><code>clinvar_gene_disease_summaries</code></td>
+<td align="left">descriptive ClinVar evidence strata per gene and disease</td>
+</tr>
+<tr>
 <td align="left">
 <code>clinvar_hpo_terms</code>, <code>clinvar_literature_links</code>
 </td>
@@ -178,6 +182,74 @@
 </tr>
 </tbody>
 </table>
+</div>
+<div class="section level2">
+<h2 id="ducklake-publication-and-release-changes">DuckLake publication and release changes<a class="anchor" aria-label="anchor" href="#ducklake-publication-and-release-changes"></a>
+</h2>
+<p>The enhanced Parquet export is the canonical case-independent ClinVar evidence relation. It has one disease-specific decision per assembly locus and retains the policy identity, stable source keys, decision counts, a complete-row <code>content_sha256</code>, and nested SCV, RCV, and gene receipts:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">enhanced_path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".parquet"</span><span class="op">)</span></span>
+<span><span class="va">release_receipt</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/rclinvarbitration_export_clinvarbitration_parquet.html">rclinvarbitration_export_clinvarbitration_parquet</a></span><span class="op">(</span></span>
+<span>  <span class="va">full_con</span>,</span>
+<span>  <span class="va">enhanced_path</span>,</span>
+<span>  release_id <span class="op">=</span> <span class="st">"ncbi-vcv-2026-07"</span>,</span>
+<span>  assembly <span class="op">=</span> <span class="st">"GRCh38"</span>,</span>
+<span>  schema <span class="op">=</span> <span class="st">"enhanced"</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>Publish that relation into a persistent DuckLake table. One publication transaction becomes one DuckLake snapshot, and DuckLake’s data-change feed then returns the exact insert, delete, and update rows. RClinVarbitration does not implement a second snapshot or delta engine.</p>
+<p>The <a href="https://github.com/RGenomicsETL/ducklake-r" class="external-link">RGenomicsETL <code>ducklake-r</code> fork</a> registers a whole Parquet batch atomically with <code>add_data_files(..., create = TRUE)</code>, without copying it or collecting it into R. A persistent staging table can then feed a key-based merge:</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">attach_ducklake</span><span class="op">(</span><span class="st">"clinvar_lake"</span>, lake_path <span class="op">=</span> <span class="st">"clinvar-lake"</span><span class="op">)</span></span>
+<span><span class="va">lake_con</span> <span class="op">&lt;-</span> <span class="fu">ducklake</span><span class="fu">::</span><span class="fu">get_ducklake_connection</span><span class="op">(</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># One-time staging-table bootstrap from the first enhanced Parquet.</span></span>
+<span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">add_data_files</span><span class="op">(</span></span>
+<span>  <span class="st">"clinvar_incoming"</span>, <span class="va">enhanced_path</span>, create <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Publish the already registered first release. For later releases, put</span></span>
+<span><span class="co"># ducklake::add_data_files("clinvar_incoming", next_path) at the start of</span></span>
+<span><span class="co"># this transaction.</span></span>
+<span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">with_transaction</span><span class="op">(</span><span class="op">{</span></span>
+<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span></span>
+<span>    <span class="va">lake_con</span>,</span>
+<span>    <span class="st">"CREATE TABLE IF NOT EXISTS clinvar_decisions AS</span></span>
+<span><span class="st">       SELECT * FROM clinvar_incoming LIMIT 0"</span></span>
+<span>  <span class="op">)</span></span>
+<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span></span>
+<span>    <span class="va">lake_con</span>,</span>
+<span>    <span class="st">"DELETE FROM clinvar_decisions AS current</span></span>
+<span><span class="st">       WHERE NOT EXISTS (</span></span>
+<span><span class="st">         SELECT 1 FROM clinvar_incoming AS incoming</span></span>
+<span><span class="st">         WHERE incoming.record_key = current.record_key</span></span>
+<span><span class="st">       )"</span></span>
+<span>  <span class="op">)</span></span>
+<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span></span>
+<span>    <span class="va">lake_con</span>,</span>
+<span>    <span class="st">"MERGE INTO clinvar_decisions AS current</span></span>
+<span><span class="st">       USING clinvar_incoming AS incoming USING (record_key)</span></span>
+<span><span class="st">       WHEN MATCHED AND</span></span>
+<span><span class="st">         current.content_sha256 IS DISTINCT FROM incoming.content_sha256</span></span>
+<span><span class="st">         THEN UPDATE</span></span>
+<span><span class="st">       WHEN NOT MATCHED THEN INSERT"</span></span>
+<span>  <span class="op">)</span></span>
+<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span><span class="va">lake_con</span>, <span class="st">"DELETE FROM clinvar_incoming"</span><span class="op">)</span></span>
+<span><span class="op">}</span>, author <span class="op">=</span> <span class="st">"RClinVarbitration"</span>,</span>
+<span>   commit_message <span class="op">=</span> <span class="st">"Publish ncbi-vcv-2026-07 default policy"</span>,</span>
+<span>   commit_extra_info <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span></span>
+<span>     <span class="st">"release_id=ncbi-vcv-2026-07"</span>,</span>
+<span>     <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"policy_version="</span>, <span class="va">release_receipt</span><span class="op">$</span><span class="va">policy_version</span><span class="op">)</span>,</span>
+<span>     sep <span class="op">=</span> <span class="st">";"</span></span>
+<span>   <span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">snapshots</span> <span class="op">&lt;-</span> <span class="fu">ducklake</span><span class="fu">::</span><span class="fu">list_table_snapshots</span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="va">changes</span> <span class="op">&lt;-</span> <span class="fu">ducklake</span><span class="fu">::</span><span class="fu">get_table_changes</span><span class="op">(</span></span>
+<span>  <span class="st">"clinvar_decisions"</span>,</span>
+<span>  start <span class="op">=</span> <span class="va">publication_snapshot_id</span>,</span>
+<span>  end <span class="op">=</span> <span class="va">publication_snapshot_id</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p><code>changes</code> contains <code>insert</code>, <code>delete</code>, <code>update_preimage</code>, and <code>update_postimage</code> rows. The nested <code>scv_submissions</code> and allele-level <code>rcv_aggregates</code> retain the source assertions behind a decision; each RCV item keeps its own disease key, so no SCV/RCV disease equivalence is invented. A release comparison must hold the policy profile fixed; a submitter-policy experiment must hold the source snapshot fixed.</p>
+<p><code>clinvar_gene_disease_summaries</code> stratifies the retained ClinVar evidence as expert-reviewed pathogenic, multi-submitter pathogenic, reported pathogenic, conflicting, uncertain, or benign-only. These are useful retrieval and reanalysis strata, not claims that ClinVar alone has established gene–disease validity.</p>
 <p>Read the <a href="https://rgenomicsetl.github.io/RClinVarbitration/articles/arbitration-algorithm.html">arbitration algorithm</a>, <a href="https://rgenomicsetl.github.io/RClinVarbitration/articles/storage-cache-and-performance.html">storage and caching guide</a>, and <a href="https://rgenomicsetl.github.io/RClinVarbitration/articles/semantic-ducklake-variantstory.html">semantic/DuckLake/VariantStory integration</a>. The <a href="https://github.com/RGenomicsETL/RClinVarbitration/blob/main/docs/ERRATA.md" class="external-link">deviation and differential audit</a> records known differences from upstream ClinVarbitration and ClinVar.</p>
 <p>A measured complete 2026-07-02 release (5.42 GiB compressed XML) imported in 21 minutes 52.5 seconds and produced a 22.33-GiB physical DuckDB file. The storage guide reports hardware, row counts, peak memory, and the used/free block split behind that physical high-water size.</p>
 </div>
@@ -185,7 +257,7 @@
 <h2 id="submitter-exclusions">Submitter exclusions<a class="anchor" aria-label="anchor" href="#submitter-exclusions"></a>
 </h2>
 <p>Imports retain all source submissions. Exclusions are parameters of decision export, so the evidence remains available for audit and alternative policies. Names are matched case-insensitively after trimming whitespace.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".parquet"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="reference/rclinvarbitration_export_clinvarbitration_parquet.html">rclinvarbitration_export_clinvarbitration_parquet</a></span><span class="op">(</span></span>
 <span>  <span class="va">con</span>,</span>
