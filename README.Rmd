@@ -10,10 +10,14 @@ output: github_document
 [![pkgdown](https://github.com/RGenomicsETL/RClinVarbitration/actions/workflows/pkgdown.yaml/badge.svg)](https://rgenomicsetl.github.io/RClinVarbitration/)
 [![r-universe](https://rgenomicsetl.r-universe.dev/badges/:name)](https://rgenomicsetl.r-universe.dev/)
 
-`RClinVarbitration` streams official ClinVar VCV XML/XML.GZ releases into
-relational DuckDB tables and derives ClinVarbitration-style decisions from the
-retained SCV submissions. The import is a single forward scan: it does not load
-the XML release into an R data frame or an in-memory XML tree.
+`RClinVarbitration` joins ClinVar's official `variant_summary` and
+`submission_summary` reports directly into one tidy DuckDB table. Each
+decision, SCV submission, RCV accession, and allele-gene link is one scalar
+row. The package applies the ClinVarbitration decision policy during the same
+import; no XML database is required for ordinary release tracking.
+
+VCV XML import remains available when an analysis needs source observations,
+citations, or text that the flat reports do not carry.
 
 The package bundles exact-version DuckDB extensions for DuckDB `v1.5.0` through
 `v1.5.4`. Connections must allow locally built unsigned extensions.
@@ -43,156 +47,119 @@ library(DBI)
 library(duckdb)
 library(RClinVarbitration)
 
-con <- dbConnect(duckdb(config = list(allow_unsigned_extensions = "true")))
-
-rclinvarbitration_enable(con)
-rclinvarbitration_init(con)
-
-# Replace this bundled one-record fixture with a complete VCV XML/XML.GZ file.
-xml <- system.file(
-  "extdata", "VCV_XML_VCV000091629.xml.gz",
+con <- dbConnect(duckdb())
+variant_report <- system.file(
+  "extdata", "variant_summary_fixture.txt",
   package = "RClinVarbitration"
 )
-imported <- rclinvarbitration_import_xml(
-  con, xml, release_id = "clinvar-example"
+submission_report <- system.file(
+  "extdata", "submission_summary_fixture.txt",
+  package = "RClinVarbitration"
+)
+
+imported <- rclinvarbitration_import_flat(
+  con,
+  submission_report,
+  variant_report,
+  release_id = "clinvar-example"
 )
 
 dbGetQuery(con, "
-  SELECT vcv_accession, variation_id, aggregate_classification
-  FROM clinvar_variants
+  SELECT record_kind, count(*) AS rows
+  FROM clinvar
+  GROUP BY record_kind
+  ORDER BY record_kind
 ")
 ```
 
-For a complete current or archived release, use the checksum-validating download
-cache and a file-backed database:
+For a complete current or archived release, download both reports and use a
+file-backed database:
 
 ```{r full-release, eval=FALSE}
 release <- "2026-03"
-xml <- rclinvarbitration_download_clinvar(release)
-# `"latest"` is also accepted, but assign its resolved content an immutable ID.
+reports <- rclinvarbitration_download_clinvar(
+  release,
+  file = c("submission_summary", "variant_summary")
+)
 
 full_con <- dbConnect(duckdb(
   dbdir = "clinvar.duckdb",
   config = list(
-    allow_unsigned_extensions = "true",
-    memory_limit = "2GB",
+    memory_limit = "8GB",
     preserve_insertion_order = "false",
-    threads = "2"
+    threads = "4"
   )
 ))
-rclinvarbitration_enable(full_con)
-rclinvarbitration_import_xml(
-  full_con, xml, release_id = paste0("ncbi-vcv-", release)
+full_import <- rclinvarbitration_import_flat(
+  full_con,
+  reports[["submission_summary"]],
+  reports[["variant_summary"]],
+  release_id = paste0("ncbi-clinvar-", release),
+  parquet_path = "clinvar-2026-03.parquet"
 )
 ```
 
-The main query surfaces are:
+The table is deliberately long rather than nested:
 
-| Relation | Content |
+| `record_kind` | One row represents |
 |:--|:--|
-| `clinvar_variants`, `clinvar_alleles`, `clinvar_locations` | VCV records and assembly-specific alleles |
-| `clinvar_rcv_assertions`, `clinvar_scv_assertions` | condition-specific aggregates and individual submissions |
-| `clinvar_conditions`, `clinvar_observations`, `clinvar_text` | attributable condition, observation, and text evidence |
-| `clinvar_disease_submissions` | SCV evidence grouped by disease |
-| `clinvar_policy_decisions`, `clinvar_policy_allele_decisions` | disease- and allele-level arbitration |
-| `clinvar_gene_summaries` | policy-versioned disease/classification counts by gene |
-| `clinvar_gene_disease_summaries` | descriptive ClinVar evidence strata per gene and disease |
-| `clinvar_hpo_terms`, `clinvar_literature_links` | normalized phenotype and literature links |
-| `clinvar_semantic_documents` | attributable text documents for retrieval workflows |
+| `variation`, `allele` | a ClinVar variation or constituent allele |
+| `location` | one assembly-specific VCF placement |
+| `decision` | the allele-level ClinVarbitration decision |
+| `scv_assertion` | one submitted classification |
+| `rcv_assertion` | one RCV accession and phenotype |
+| `gene` | one allele-gene link |
+
+GRCh37 and GRCh38 locations are retained together. `clinvar_vcf` exposes
+one-based `position`, `reference`, and `alternate` fields with conventional
+`1`/`chr1` primary-contig names. The exact `sequence_accession` is retained;
+alternate placements use that accession as `contig`, and X/Y PAR placements
+remain separate rows. Raw `location` rows are still retained when ClinVar lacks
+a complete VCF tuple, as occurs for some structural variants; those rows are
+deliberately absent from `clinvar_vcf`.
+
+On the measured March 2026 flat reports, the table contains 38,596,056 unique
+facts in a 4.98 GiB DuckDB file. It retains 4,410,536 GRCh38 and 4,463,601
+GRCh37 source locations; 4,389,459 and 4,389,810 respectively have usable VCF
+tuples. The full XML source is larger—109,372,736 unique stored facts—because
+it also carries observations, citations, names, cross-references, attributes,
+and text. These row counts are ordinary analytical-table scale for DuckDB; the
+important contract is preserved assembly and accession identity.
+
+```{r coordinate-view}
+dbGetQuery(con, "
+  SELECT assembly, contig, position, reference, alternate
+  FROM clinvar_vcf
+  ORDER BY assembly
+")
+```
 
 ## DuckLake publication and release changes
 
-The enhanced Parquet export is the canonical case-independent ClinVar evidence
-relation. It has one disease-specific decision per assembly locus and retains
-the policy identity, stable source keys, decision counts, a complete-row
-`content_sha256`, and nested SCV, RCV, and gene receipts:
-
-```{r enhanced-export, eval=FALSE}
-enhanced_path <- tempfile(fileext = ".parquet")
-release_receipt <- rclinvarbitration_export_clinvarbitration_parquet(
-  full_con,
-  enhanced_path,
-  release_id = "ncbi-vcv-2026-07",
-  assembly = "GRCh38",
-  schema = "enhanced"
-)
-```
-
-Publish that relation into a persistent DuckLake table. One publication
-transaction becomes one DuckLake snapshot, and DuckLake's data-change feed
-then returns the exact insert, delete, and update rows. RClinVarbitration does
-not implement a second snapshot or delta engine.
-
 The [RGenomicsETL `ducklake-r`
-fork](https://github.com/RGenomicsETL/ducklake-r) registers a whole Parquet
-batch atomically with `add_data_files(..., create = TRUE)`, without copying it
-or collecting it into R. A persistent staging table can then feed a key-based
-merge:
+fork](https://github.com/RGenomicsETL/ducklake-r) registers that Parquet
+without collecting it into R. RClinVarbitration owns the key-based publication:
 
 ```{r ducklake-publication, eval=FALSE}
+ducklake::set_ducklake_connection(full_con)
 ducklake::attach_ducklake("clinvar_lake", lake_path = "clinvar-lake")
-lake_con <- ducklake::get_ducklake_connection()
-
-# One-time staging-table bootstrap from the first enhanced Parquet.
-ducklake::add_data_files(
-  "clinvar_incoming", enhanced_path, create = TRUE
-)
-
-# Publish the already registered first release. For later releases, put
-# ducklake::add_data_files("clinvar_incoming", next_path) at the start of
-# this transaction.
-ducklake::with_transaction({
-  DBI::dbExecute(
-    lake_con,
-    "CREATE TABLE IF NOT EXISTS clinvar_decisions AS
-       SELECT * FROM clinvar_incoming LIMIT 0"
-  )
-  DBI::dbExecute(
-    lake_con,
-    "DELETE FROM clinvar_decisions AS current
-       WHERE NOT EXISTS (
-         SELECT 1 FROM clinvar_incoming AS incoming
-         WHERE incoming.record_key = current.record_key
-       )"
-  )
-  DBI::dbExecute(
-    lake_con,
-    "MERGE INTO clinvar_decisions AS current
-       USING clinvar_incoming AS incoming USING (record_key)
-       WHEN MATCHED AND
-         current.content_sha256 IS DISTINCT FROM incoming.content_sha256
-         THEN UPDATE
-       WHEN NOT MATCHED THEN INSERT"
-  )
-  DBI::dbExecute(lake_con, "DELETE FROM clinvar_incoming")
-}, author = "RClinVarbitration",
-   commit_message = "Publish ncbi-vcv-2026-07 default policy",
-   commit_extra_info = paste(
-     "release_id=ncbi-vcv-2026-07",
-     paste0("policy_version=", release_receipt$policy_version),
-     sep = ";"
-   ))
-
-snapshots <- ducklake::list_table_snapshots()
+publication <- rclinvarbitration_publish_ducklake(full_con, full_import)
 changes <- ducklake::get_table_changes(
-  "clinvar_decisions",
-  start = publication_snapshot_id,
-  end = publication_snapshot_id
+  "clinvar",
+  publication$snapshot_id,
+  publication$snapshot_id
 )
 ```
 
-`changes` contains `insert`, `delete`, `update_preimage`, and
-`update_postimage` rows. The nested `scv_submissions` and allele-level
-`rcv_aggregates` retain the source assertions behind a decision; each RCV item
-keeps its own disease key, so no SCV/RCV disease equivalence is invented. A
-release comparison must hold the policy profile fixed; a submitter-policy
-experiment must hold the source snapshot fixed.
+The function initializes persistent staging once, validates keys and policy
+identity, and commits inserts, updates, and withdrawals as one snapshot.
+Unchanged rows are untouched. DuckLake's change feed is the delta authority.
 
-`clinvar_gene_disease_summaries` stratifies the retained ClinVar evidence as
-expert-reviewed pathogenic, multi-submitter pathogenic, reported pathogenic,
-conflicting, uncertain, or benign-only. These are useful retrieval and
-reanalysis strata, not claims that ClinVar alone has established gene–disease
-validity.
+Complete-release row counts and storage depend on the selected source path:
+the compact flat reports contain the ordinary arbitration substrate, while XML
+adds source entities that are absent from those reports. The storage vignette
+records the measured workloads separately rather than treating them as the
+same benchmark.
 
 Read the [arbitration algorithm](https://rgenomicsetl.github.io/RClinVarbitration/articles/arbitration-algorithm.html),
 [storage and caching guide](https://rgenomicsetl.github.io/RClinVarbitration/articles/storage-cache-and-performance.html),
@@ -200,31 +167,30 @@ and [semantic/DuckLake/VariantStory integration](https://rgenomicsetl.github.io/
 The [deviation and differential audit](https://github.com/RGenomicsETL/RClinVarbitration/blob/main/docs/ERRATA.md) records known differences
 from upstream ClinVarbitration and ClinVar.
 
-A measured complete 2026-07-02 release (5.42 GiB compressed XML) imported in
-21 minutes 52.5 seconds and produced a 22.33-GiB physical DuckDB file. The
-storage guide reports hardware, row counts, peak memory, and the used/free block
-split behind that physical high-water size.
-
 ## Submitter exclusions
 
-Imports retain all source submissions. Exclusions are parameters of decision
-export, so the evidence remains available for audit and alternative policies.
-Names are matched case-insensitively after trimming whitespace.
+Flat imports retain all source submissions. Exclusions change only the
+`decision` rows and are recorded in the import receipt. Names are matched
+case-insensitively after trimming whitespace.
 
-```{r export}
-out <- tempfile(fileext = ".parquet")
-rclinvarbitration_export_clinvarbitration_parquet(
-  con,
-  out,
+```{r exclusions, eval=FALSE}
+rclinvarbitration_import_flat(
+  con, submission_report, variant_report,
   release_id = "clinvar-example",
-  assembly = "GRCh38",
   submitter_exclusions = c("Example laboratory", "Another submitter")
 )
 ```
 
-The argument adds to exclusions already configured for `profile_id`. Named,
-reusable profiles can still be stored in `clinvar_policy_profiles` and
-`clinvar_policy_submitter_exclusions`.
+## Optional XML enrichment
+
+Call `rclinvarbitration_enable()`, `rclinvarbitration_init()`, and
+`rclinvarbitration_import_xml()` only when the analysis needs XML-only
+observations, citations, attributable text, or disease-scoped assertion
+structure. The XML path writes the same scalar `clinvar` table as the flat
+import. Compatibility relation names such as `clinvar_locations` and
+`clinvar_scv_assertions` are views over that table. XML-derived policy
+decisions remain views until an explicit Parquet or DuckLake publication asks
+to materialize them.
 
 ## Comparison with upstream ClinVarbitration
 
@@ -234,20 +200,17 @@ ClinVarbitration](https://github.com/populationgenomics/clinvarbitration)
 
 | | Upstream 2.2.11 | RClinVarbitration |
 |:--|:--|:--|
-| Primary input | NCBI submission and variant summary files | complete VCV XML/XML.GZ |
+| Primary input | NCBI submission and variant summary files | the same two reports |
 | Runtime | Python, Hail, Nextflow, bcftools | R, DuckDB, package-owned C extension |
-| Decision scope | allele | allele and disease |
-| Main outputs | TSV, Hail Table, VCF, PM5 resource | relational tables/views and Parquet |
+| Decision scope | allele | allele; optional XML disease enrichment |
+| Main outputs | TSV, Hail Table, VCF, PM5 resource | one tidy DuckDB/Parquet relation |
 | Submitter exclusion | `site_blacklist` / `-b` | `submitter_exclusions` or named profiles |
 | PM5 | included | out of scope |
 
 The shared decision rules include the 2016 ACMG date filter, classification
 bins, 60/20 majority rule, strong-review precedence, and star calculation.
-The XML-derived Parquet export has the upstream seven-column decision schema,
-but is not expected to be byte-identical because its source and grouping differ.
-
-The archived-flat-file reproducer is retained only as a differential-validation
-utility; it is redundant for ordinary XML imports. An exact-input execution
+The compatibility export retains the upstream seven-column decision schema.
+An exact-input execution
 of the pinned upstream Python TSV stage and this package's flat reproducer over
 the complete March 2026 archives produced the same 4,125,389 keys with zero
 classification or star differences. Input, code, configuration, and output
@@ -272,11 +235,11 @@ that implementation accident.
 
 ## Evidence retrieval and reanalysis
 
-A second motivation is to make ClinVar's attributable evidence reusable, not
-only to annotate known alleles. Submission descriptions, comments, HPO links,
-gene relations, and publication identifiers can support semantic retrieval,
-dynamic gene-panel proposals, and evidence review for VUS or novel variants.
-The package provides joinable views for
+A second motivation is to make ClinVar evidence reusable, not only to annotate
+known alleles. The flat table retains submission descriptions, phenotype
+strings, RCVs, and gene links. Optional XML enrichment adds citations,
+normalized HPO links, and other attributable observations. These are joinable
+inputs for
 [`ducksemantics`](https://github.com/RGenomicsETL/ducksemantics), DuckLake
 release history, and the source-observation model planned by
 [`VariantStory`](https://github.com/RGenomicsETL/VariantStory).

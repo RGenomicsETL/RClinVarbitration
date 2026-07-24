@@ -21,24 +21,23 @@ classifications.
 
 ## Deviations from upstream ClinVarbitration
 
-| Area                         | Upstream 2.2.11                                                               | RClinVarbitration                                                                          | Status and consequence                                                                                |
-|:-----------------------------|:------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------------------|
-| Normal input                 | NCBI `submission_summary` plus `variant_summary`                              | complete VCV XML/XML.GZ                                                                    | Intentional. XML retains richer attributable evidence but has different entity and release semantics. |
-| Runtime                      | Python, Pandas, Hail, Spark, Nextflow, bcftools                               | R, DuckDB SQL, package-owned C extension                                                   | Intentional implementation change; semantic parity is tested separately from performance.             |
-| Decision scope               | allele/VariationID                                                            | disease plus allele views                                                                  | Intentional extension. Disease grouping can produce multiple decisions for one allele.                |
-| SCV versions                 | flat rows; no XML assertion identity step                                     | highest SCV version per assertion identity and decision group                              | Intentional XML adaptation; can change counts where versioned rows are exposed.                       |
-| Qualified Illumina exclusion | declared, but the pinned Python inner-loop `continue` does not remove the row | removes benign evidence from normalized submitter `illumina laboratory services; illumina` | Intentional correction to documented policy, not bug-for-bug compatibility.                           |
-| Submitter exclusion matching | lower-cased flat submitter names and CLI/config values                        | trimmed, case-insensitive names; profile-wide or classification-qualified rules            | Intentional extension. Imported evidence remains present.                                             |
-| Disease identity             | absent from the decision key                                                  | canonical identifier, trait-set, name, then package entity fallback                        | Intentional extension with known grouping heuristics; see open limitations.                           |
-| Outputs                      | TSV, Hail Table, VCF, PM5 relation                                            | typed DuckDB tables/views and Parquet decision export                                      | Intentional. Hail, VCF rendering, VEP, and PM5 generation are out of scope.                           |
-| Star and 60/20 rules         | pinned Python implementation                                                  | equivalent SQL rules                                                                       | Expected parity when input rows, order, grouping, and exclusions are identical.                       |
-| Strong-review choice         | first strong row encountered                                                  | `min_by` classification in retained source order                                           | Expected parity. It does not impose practice-guideline priority over an earlier expert-panel row.     |
+| Area                         | Upstream 2.2.11                                                               | RClinVarbitration                                                                          | Status and consequence                                                                                                         |
+|:-----------------------------|:------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------|
+| Normal input                 | NCBI `submission_summary` plus `variant_summary`                              | the same flat reports; optional complete VCV XML/XML.GZ                                    | Flat import is the compact default. XML feeds the same table with richer attributable evidence but different entity semantics. |
+| Runtime                      | Python, Pandas, Hail, Spark, Nextflow, bcftools                               | R, DuckDB SQL, package-owned C extension                                                   | Intentional implementation change; semantic parity is tested separately from performance.                                      |
+| Decision scope               | allele/VariationID                                                            | disease plus allele views                                                                  | Intentional extension. Disease grouping can produce multiple decisions for one allele.                                         |
+| SCV versions                 | flat rows; no XML assertion identity step                                     | highest SCV version per assertion identity and decision group                              | Intentional XML adaptation; can change counts where versioned rows are exposed.                                                |
+| Qualified Illumina exclusion | declared, but the pinned Python inner-loop `continue` does not remove the row | removes benign evidence from normalized submitter `illumina laboratory services; illumina` | Intentional correction to documented policy, not bug-for-bug compatibility.                                                    |
+| Submitter exclusion matching | lower-cased flat submitter names and CLI/config values                        | trimmed, case-insensitive names; profile-wide or classification-qualified rules            | Intentional extension. Imported evidence remains present.                                                                      |
+| Disease identity             | absent from the decision key                                                  | canonical identifier, trait-set, name, then package entity fallback                        | Intentional extension with known grouping heuristics; see open limitations.                                                    |
+| Outputs                      | TSV, Hail Table, VCF, PM5 relation                                            | one scalar DuckDB table, SQL views, and Parquet exports                                    | Intentional. Hail, VCF file rendering, VEP, and PM5 generation are out of scope.                                               |
+| Star and 60/20 rules         | pinned Python implementation                                                  | equivalent SQL rules                                                                       | Expected parity when input rows, order, grouping, and exclusions are identical.                                                |
+| Strong-review choice         | first strong row encountered                                                  | `min_by` classification in retained source order                                           | Expected parity. It does not impose practice-guideline priority over an earlier expert-panel row.                              |
 
-The validation-only
-`rclinvarbitration_reproduce_clinvarbitration_parquet()` path reads the
-same flat-file shape as upstream. It is intentionally separate from the
-normal XML workflow and should not be used merely to recreate data
-already imported from XML.
+`rclinvarbitration_import_flat()` is the ordinary compact release
+import. `rclinvarbitration_reproduce_clinvarbitration_parquet()` remains
+a direct seven-column oracle for the upstream output contract. VCV XML
+is optional enrichment, not a second public storage model.
 
 ## Deviations from ClinVar
 
@@ -74,6 +73,21 @@ does not persist:
 `clinvar_text` additionally projects condition names and string-valued
 attributes for discovery. Those rows are attributable normalized
 projections, not original XML serialization.
+
+### Assembly and VCF coordinate identity
+
+Each `location` row keeps the declared assembly, assembly accession,
+source chromosome label, exact sequence accession, one-based VCF
+position, reference, and alternate allele. GRCh37 and GRCh38 rows
+coexist; the importer does not infer one assembly by lifting the other.
+
+`clinvar_vcf` uses conventional primary-contig names (`1`/`chr1`,
+`M`/`chrM`) only for primary `NC_` accessions or flat-report rows that
+do not provide a sequence accession. `NT_`, `NW_`, and other alternate
+placements retain their accession as `contig`. X and Y placements for
+the same AlleleID remain separate rows, including pseudoautosomal
+placements. Consumers must choose the desired assembly and placement
+rather than collapsing on AlleleID alone.
 
 ### Package-generated entity identifiers
 
@@ -173,8 +187,8 @@ The upstream TSV stage at commit
 March archive files identified above. The upstream decision module was
 loaded unmodified; inert Hail/loguru stand-ins allowed execution through
 `write_dicts_as_tsv()` and stopped before Hail, VCF, and PM5
-post-processing. The package’s validation-only flat reproducer was then
-compared on the complete seven-column key and values.
+post-processing. The package’s direct flat reproducer was then compared
+on the complete seven-column key and values.
 
 | Metric                               | RClinVarbitration flat path | Pinned upstream execution |
 |:-------------------------------------|----------------------------:|--------------------------:|
@@ -290,8 +304,8 @@ citation is treated as clinically relevant merely because it exists.
     changes and withdrawn/merged accessions.
 2.  Decide whether sample, method, observed-data, and
     molecular/functional consequence structures measured above warrant
-    new typed relations; until then, expose their quantified loss rather
-    than implying lossless import.
+    new scalar record kinds or columns; until then, expose their
+    quantified loss rather than implying lossless import.
 3.  Repeat the exact-input upstream oracle for future policy or parser
     changes; do not substitute a mutable or digest-free published
     artifact.

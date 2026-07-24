@@ -1,6 +1,6 @@
 Package: RClinVarbitration
 Type: Package
-Title: Stream ClinVar XML into Relational DuckDB Tables
+Title: Build Tidy ClinVar Evidence and Arbitration Tables
 Version: 0.1.1
 Authors@R: c(
     person(given = "Sounkou Mahamane", family = "Toure",
@@ -10,14 +10,13 @@ Authors@R: c(
     person(given = "Centre for Population Genomics", role = "cph",
            comment = "ClinVarbitration 2.2.11 decision-policy semantics")
     )
-Description: Streams official 'ClinVar' VCV XML releases, including gzip
-    inputs, into focused relational tables in 'DuckDB'. A package-owned native
-    extension uses libxml2's forward reader to retain VCV variants, normalized
-    alleles, RCV aggregates, SCV submissions, conditions, observations,
-    citations, and attributable evidence text without loading the release into
-    R. ClinVarbitration policy is a derived SQL layer over those retained
-    source relations, with a separate direct reproducer for archived NCBI
-    flat-file releases.
+Description: Joins official 'ClinVar' variant and submission reports directly
+    into one tidy scalar 'DuckDB' table containing variations, alleles,
+    GRCh37/GRCh38 locations, decisions, source assertions, and gene links.
+    ClinVarbitration policy is implemented in SQL over those reports. An
+    optional package-owned native extension streams VCV XML into the same
+    table when richer observations, conditions, citations, attributes, and
+    attributable evidence text are required.
 License: GPL (>= 2)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -25,6 +24,7 @@ RoxygenNote: 8.0.0
 Imports:
     DBI
 Suggests:
+    ducklake,
     duckdb,
     knitr,
     rmarkdown,

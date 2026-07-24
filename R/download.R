@@ -101,10 +101,10 @@ rclinvarbitration_download_one <- function(spec, cache_dir, overwrite, quiet) {
 #' Download official ClinVar source files
 #'
 #' Downloads either the current ClinVar release or a named monthly archive from
-#' the NCBI HTTPS service. The VCV XML file is the normal input to
-#' [rclinvarbitration_import_xml()]. The two flat files are optional,
-#' validation-only inputs to
-#' [rclinvarbitration_reproduce_clinvarbitration_parquet()].
+#' the NCBI HTTPS service. The flat reports are the compact default input to
+#' [rclinvarbitration_import_flat()]. VCV XML feeds the same scalar `clinvar`
+#' table when an analysis also needs observations, citations, conditions,
+#' attributes, or attributable text that the flat reports do not contain.
 #'
 #' Existing files form a local cache. Current files and archived VCV XML files
 #' are checked against NCBI's MD5 sidecar; a matching file is reused and a stale

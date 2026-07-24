@@ -12,11 +12,29 @@ expect_equal(
   1
 )
 
-DBI::dbExecute(con, "INSERT INTO clinvar_variants (release_id, record_ordinal, vcv_accession) VALUES ('xref', 1, 'VCVX')")
-DBI::dbExecute(con, "INSERT INTO clinvar_alleles (release_id, record_ordinal, vcv_accession, allele_entity_id, allele_id) VALUES ('xref', 1, 'VCVX', 'allele-x', 1)")
-DBI::dbExecute(con, "INSERT INTO clinvar_scv_assertions (release_id, record_ordinal, vcv_accession, assertion_entity_id) VALUES ('xref', 1, 'VCVX', 'assertion-x')")
-DBI::dbExecute(con, "INSERT INTO clinvar_conditions (release_id, record_ordinal, vcv_accession, scv_entity_id, condition_id, context_type, context_id, preferred_name) VALUES ('xref', 1, 'VCVX', 'assertion-x', 'condition-x', 'scv_assertion', 'assertion-x', 'Disease X')")
-DBI::dbExecute(con, "INSERT INTO clinvar_xrefs (release_id, record_ordinal, vcv_accession, scv_entity_id, context_type, context_id, xref_id, database_name, database_id) VALUES ('xref', 1, 'VCVX', 'assertion-x', 'condition', 'condition-x', 'xref-hp', 'HP', 'HP:0000001'), ('xref', 1, 'VCVX', 'assertion-x', 'condition', 'condition-x', 'xref-omim', 'OMIM', '123')")
+DBI::dbExecute(con, "
+  INSERT INTO clinvar
+    (release_id, record_kind, record_key, record_ordinal, vcv_accession,
+     scv_entity_id, entity_id, parent_type, parent_id, allele_id,
+     context_type, context_id, preferred_name, database_name, database_id)
+  VALUES
+    ('xref', 'variation', 'variation|x', 1, 'VCVX',
+     NULL, 'variation-x', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+    ('xref', 'allele', 'allele|x', 1, 'VCVX',
+     NULL, 'allele-x', NULL, NULL, 1, NULL, NULL, NULL, NULL, NULL),
+    ('xref', 'scv_assertion', 'scv|x', 1, 'VCVX',
+     'assertion-x', 'assertion-x', NULL, NULL, NULL,
+     NULL, NULL, NULL, NULL, NULL),
+    ('xref', 'condition', 'condition|x', 1, 'VCVX',
+     'assertion-x', 'condition-x', 'scv_assertion', 'assertion-x', NULL,
+     'scv_assertion', 'assertion-x', 'Disease X', NULL, NULL),
+    ('xref', 'xref', 'xref|hp', 1, 'VCVX',
+     'assertion-x', 'xref-hp', 'condition', 'condition-x', NULL,
+     'condition', 'condition-x', NULL, 'HP', 'HP:0000001'),
+    ('xref', 'xref', 'xref|omim', 1, 'VCVX',
+     'assertion-x', 'xref-omim', 'condition', 'condition-x', NULL,
+     'condition', 'condition-x', NULL, 'OMIM', '123')
+")
 canonical <- DBI::dbGetQuery(con, "SELECT disease_database, disease_identifier, disease_key FROM clinvar_disease_submissions")
 expect_equal(canonical$disease_database, "OMIM")
 expect_equal(canonical$disease_identifier, "123")

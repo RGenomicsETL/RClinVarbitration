@@ -1,12 +1,10 @@
 #' ClinVar relational schema SQL
 #'
-#' Returns DuckDB DDL for the focused ClinVar schema. Public identifiers and
-#' domain relations are retained directly: VCV variants, alleles and assembly
-#' locations, genes, RCV aggregates, SCV submissions, conditions, observations,
-#' citations, attributes, and attributable discovery text. XML parser nodes are
-#' not persisted. The release catalogue enforces its small primary key; the
-#' release-scale analytical tables expose logical key columns without DuckDB
-#' ART indexes so complete imports remain memory-bounded.
+#' Returns DuckDB DDL for one scalar ClinVar fact table plus compatibility
+#' views. Every XML entity is one `clinvar` row identified by `record_kind`;
+#' repeated conditions, observations, citations, names, and text are additional
+#' rows rather than nested values or Cartesian products. The release catalogue
+#' and small policy configuration tables remain separate.
 #'
 #' @return A named character vector of SQL statements.
 #' @export
@@ -15,119 +13,50 @@ rclinvarbitration_schema_sql <- function() {
     releases = paste(
       "CREATE TABLE IF NOT EXISTS clinvar_releases (",
       "release_id TEXT PRIMARY KEY, source_path TEXT NOT NULL, source_url TEXT,",
-      "source_md5 TEXT, source_bytes UBIGINT,",
+      "source_md5 TEXT, source_bytes UBIGINT, source_kind TEXT,",
+      "submission_path TEXT, variant_path TEXT,",
       "imported_at TIMESTAMP NOT NULL DEFAULT current_timestamp)"
     ),
     release_source_url = "ALTER TABLE clinvar_releases ADD COLUMN IF NOT EXISTS source_url TEXT",
     release_source_md5 = "ALTER TABLE clinvar_releases ADD COLUMN IF NOT EXISTS source_md5 TEXT",
     release_source_bytes = "ALTER TABLE clinvar_releases ADD COLUMN IF NOT EXISTS source_bytes UBIGINT",
-    variants = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_variants (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL,",
-      "vcv_accession TEXT NOT NULL, vcv_version UINTEGER, variation_id UBIGINT,",
-      "variation_name TEXT, variation_type TEXT, record_type TEXT, record_status TEXT,",
-      "species TEXT, date_created DATE, date_last_updated DATE, most_recent_submission DATE,",
+    release_source_kind = "ALTER TABLE clinvar_releases ADD COLUMN IF NOT EXISTS source_kind TEXT",
+    release_submission_path = "ALTER TABLE clinvar_releases ADD COLUMN IF NOT EXISTS submission_path TEXT",
+    release_variant_path = "ALTER TABLE clinvar_releases ADD COLUMN IF NOT EXISTS variant_path TEXT",
+    records = paste(
+      "CREATE TABLE IF NOT EXISTS clinvar (",
+      "release_id TEXT NOT NULL, record_kind TEXT NOT NULL, record_key TEXT NOT NULL,",
+      "record_ordinal UBIGINT NOT NULL, entity_ordinal UBIGINT,",
+      "vcv_accession TEXT, rcv_entity_id TEXT, scv_entity_id TEXT,",
+      "entity_id TEXT, parent_type TEXT, parent_id TEXT,",
+      "vcv_version UINTEGER, variation_id UBIGINT, variation_name TEXT,",
+      "variation_type TEXT, record_type TEXT, record_status TEXT, species TEXT,",
+      "date_created DATE, date_last_updated DATE, most_recent_submission DATE,",
       "number_of_submissions UINTEGER, number_of_submitters UINTEGER,",
-      "aggregate_classification TEXT, aggregate_review_status TEXT,",
-      "aggregate_date_last_evaluated DATE)"
-    ),
-    alleles = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_alleles (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL,",
-      "vcv_accession TEXT NOT NULL, allele_entity_id TEXT NOT NULL,",
-      "parent_allele_entity_id TEXT, allele_id UBIGINT, variation_id UBIGINT,",
-      "name TEXT, variant_type TEXT, canonical_spdi TEXT)"
-    ),
-    locations = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_locations (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL,",
-      "vcv_accession TEXT NOT NULL, allele_entity_id TEXT NOT NULL, location_id TEXT NOT NULL,",
-      "assembly TEXT, assembly_accession_version TEXT, assembly_status TEXT,",
-      "chromosome TEXT, sequence_accession TEXT, start UBIGINT, stop UBIGINT,",
-      "position_vcf UBIGINT, reference_allele_vcf TEXT, alternate_allele_vcf TEXT,",
-      "for_display BOOLEAN)"
-    ),
-    genes = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_genes (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL,",
-      "vcv_accession TEXT NOT NULL, allele_entity_id TEXT NOT NULL, gene_entity_id TEXT NOT NULL,",
-      "gene_id UBIGINT, symbol TEXT, hgnc_id TEXT, full_name TEXT,",
-      "relationship_type TEXT, source TEXT)"
-    ),
-    rcvs = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_rcv_assertions (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL,",
-      "vcv_accession TEXT NOT NULL, rcv_accession TEXT NOT NULL, rcv_version UINTEGER,",
-      "title TEXT, classification TEXT, review_status TEXT,",
-      "date_last_evaluated DATE, submission_count UINTEGER)"
-    ),
-    scvs = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_scv_assertions (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL, source_ordinal UBIGINT,",
-      "vcv_accession TEXT NOT NULL, assertion_entity_id TEXT NOT NULL, assertion_id UBIGINT,",
-      "scv_accession TEXT, scv_version UINTEGER, submitter_name TEXT, submitter_id UBIGINT,",
-      "organization_category TEXT, organization_abbreviation TEXT, local_key TEXT,",
-      "submitted_assembly TEXT, submission_title TEXT, assertion_type TEXT, record_status TEXT,",
       "classification TEXT, review_status TEXT, date_last_evaluated DATE,",
-      "submission_date DATE, date_created DATE, date_last_updated DATE,",
-      "contributes_to_aggregate_classification BOOLEAN)"
-    ),
-    scv_source_ordinal = "ALTER TABLE clinvar_scv_assertions ADD COLUMN IF NOT EXISTS source_ordinal UBIGINT",
-    conditions = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_conditions (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL,",
-      "vcv_accession TEXT NOT NULL, rcv_entity_id TEXT, scv_entity_id TEXT,",
-      "condition_id TEXT NOT NULL, context_type TEXT NOT NULL, context_id TEXT NOT NULL,",
-      "trait_id TEXT, trait_type TEXT, trait_set_id TEXT, trait_set_type TEXT,",
-      "preferred_name TEXT, database_name TEXT, database_id TEXT,",
-      "contributes_to_aggregate_classification BOOLEAN)"
-    ),
-    condition_names = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_condition_names (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL,",
-      "vcv_accession TEXT NOT NULL, rcv_entity_id TEXT, scv_entity_id TEXT,",
-      "condition_id TEXT NOT NULL, name_id TEXT NOT NULL, name_type TEXT, name TEXT NOT NULL)"
-    ),
-    xrefs = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_xrefs (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL,",
-      "vcv_accession TEXT NOT NULL, rcv_entity_id TEXT, scv_entity_id TEXT,",
-      "context_type TEXT NOT NULL, context_id TEXT NOT NULL, xref_id TEXT NOT NULL,",
-      "database_name TEXT, database_id TEXT, xref_type TEXT)"
-    ),
-    observations = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_observations (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL,",
-      "vcv_accession TEXT NOT NULL, scv_entity_id TEXT NOT NULL, observation_id TEXT NOT NULL,",
-      "origin TEXT, species TEXT, affected_status TEXT, number_tested UINTEGER, method_type TEXT)"
-    ),
-    citations = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_citations (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL,",
-      "vcv_accession TEXT NOT NULL, rcv_entity_id TEXT, scv_entity_id TEXT,",
-      "citation_id TEXT NOT NULL, context_type TEXT NOT NULL, context_id TEXT NOT NULL,",
-      "citation_type TEXT, abbreviation TEXT, url TEXT)"
-    ),
-    citation_identifiers = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_citation_identifiers (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL,",
-      "vcv_accession TEXT NOT NULL, rcv_entity_id TEXT, scv_entity_id TEXT,",
-      "citation_id TEXT NOT NULL, identifier_entity_id TEXT NOT NULL,",
-      "source TEXT, identifier TEXT NOT NULL)"
-    ),
-    attributes = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_attributes (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL,",
-      "vcv_accession TEXT NOT NULL, rcv_entity_id TEXT, scv_entity_id TEXT,",
-      "attribute_id TEXT NOT NULL, context_type TEXT NOT NULL, context_id TEXT NOT NULL,",
-      "attribute_type TEXT, integer_value BIGINT, value TEXT)"
-    ),
-    text = paste(
-      "CREATE TABLE IF NOT EXISTS clinvar_text (",
-      "release_id TEXT NOT NULL, record_ordinal UBIGINT NOT NULL, ordinal UBIGINT NOT NULL,",
-      "document_id TEXT NOT NULL, vcv_accession TEXT NOT NULL,",
-      "rcv_entity_id TEXT, scv_entity_id TEXT, context_type TEXT NOT NULL, context_id TEXT NOT NULL,",
-      "section TEXT NOT NULL, text TEXT NOT NULL)"
+      "parent_allele_entity_id TEXT, allele_id UBIGINT, allele_name TEXT,",
+      "variant_type TEXT, canonical_spdi TEXT, assembly TEXT,",
+      "assembly_accession_version TEXT, assembly_status TEXT, chromosome TEXT,",
+      "sequence_accession TEXT, start UBIGINT, stop UBIGINT, position_vcf UBIGINT,",
+      "reference_allele_vcf TEXT, alternate_allele_vcf TEXT, for_display BOOLEAN,",
+      "gene_id UBIGINT, gene_symbol TEXT, hgnc_id TEXT, gene_name TEXT,",
+      "relationship_type TEXT, source TEXT, accession TEXT, version UINTEGER,",
+      "title TEXT, submission_count UINTEGER, source_ordinal UBIGINT,",
+      "assertion_id UBIGINT, submitter_name TEXT, submitter_id UBIGINT,",
+      "organization_category TEXT, organization_abbreviation TEXT, local_key TEXT,",
+      "submitted_assembly TEXT, submission_title TEXT, assertion_type TEXT,",
+      "submission_date DATE, contributes_to_aggregate_classification BOOLEAN,",
+      "context_type TEXT, context_id TEXT, trait_id TEXT, trait_type TEXT,",
+      "trait_set_id TEXT, trait_set_type TEXT, preferred_name TEXT,",
+      "database_name TEXT, database_id TEXT, name_type TEXT, value_text TEXT,",
+      "xref_type TEXT, origin TEXT, affected_status TEXT, number_tested UINTEGER,",
+      "method_type TEXT, citation_type TEXT, abbreviation TEXT, url TEXT,",
+      "identifier_source TEXT, identifier TEXT, attribute_type TEXT,",
+      "integer_value BIGINT, section TEXT, text_value TEXT,",
+      "description TEXT, submitted_phenotype_info TEXT,",
+      "reported_phenotype_info TEXT, collection_method TEXT, origin_counts TEXT,",
+      "submitted_gene_symbol TEXT, explanation TEXT, policy_version TEXT,",
+      "profile_id TEXT, gold_stars INTEGER)"
     ),
     policy_profiles = paste(
       "CREATE TABLE IF NOT EXISTS clinvar_policy_profiles (",
@@ -146,15 +75,152 @@ rclinvarbitration_schema_sql <- function() {
       "WHERE NOT EXISTS (SELECT 1 FROM clinvar_policy_profiles WHERE policy_version = '",
       rclinvarbitration_policy_version(), "' AND profile_id = 'default')"
     ),
+    variants = paste(
+      "CREATE OR REPLACE VIEW clinvar_variants AS SELECT release_id, record_ordinal,",
+      "vcv_accession, vcv_version, variation_id, variation_name, variation_type,",
+      "record_type, record_status, species, date_created, date_last_updated,",
+      "most_recent_submission, number_of_submissions, number_of_submitters,",
+      "classification AS aggregate_classification,",
+      "review_status AS aggregate_review_status,",
+      "date_last_evaluated AS aggregate_date_last_evaluated",
+      "FROM clinvar WHERE record_kind = 'variation'"
+    ),
+    alleles = paste(
+      "CREATE OR REPLACE VIEW clinvar_alleles AS SELECT release_id, record_ordinal,",
+      "vcv_accession, entity_id AS allele_entity_id, parent_allele_entity_id,",
+      "allele_id, variation_id, allele_name AS name, variant_type, canonical_spdi",
+      "FROM clinvar WHERE record_kind = 'allele'"
+    ),
+    locations = paste(
+      "CREATE OR REPLACE VIEW clinvar_locations AS SELECT release_id, record_ordinal,",
+      "vcv_accession, parent_id AS allele_entity_id, entity_id AS location_id,",
+      "assembly, assembly_accession_version, assembly_status, chromosome,",
+      "sequence_accession, start, stop, position_vcf, reference_allele_vcf,",
+      "alternate_allele_vcf, for_display FROM clinvar WHERE record_kind = 'location'"
+    ),
+    genes = paste(
+      "CREATE OR REPLACE VIEW clinvar_genes AS SELECT release_id, record_ordinal,",
+      "vcv_accession, parent_id AS allele_entity_id, entity_id AS gene_entity_id,",
+      "gene_id, gene_symbol AS symbol, hgnc_id, gene_name AS full_name,",
+      "relationship_type, source FROM clinvar WHERE record_kind = 'gene'"
+    ),
+    rcvs = paste(
+      "CREATE OR REPLACE VIEW clinvar_rcv_assertions AS SELECT release_id,",
+      "record_ordinal, vcv_accession, accession AS rcv_accession,",
+      "version AS rcv_version, title, classification, review_status,",
+      "date_last_evaluated, submission_count FROM clinvar",
+      "WHERE record_kind = 'rcv_assertion'"
+    ),
+    scvs = paste(
+      "CREATE OR REPLACE VIEW clinvar_scv_assertions AS SELECT release_id,",
+      "record_ordinal, source_ordinal, vcv_accession, entity_id AS assertion_entity_id,",
+      "assertion_id, accession AS scv_accession, version AS scv_version,",
+      "submitter_name, submitter_id, organization_category,",
+      "organization_abbreviation, local_key, submitted_assembly, submission_title,",
+      "assertion_type, record_status, classification, review_status,",
+      "date_last_evaluated, submission_date, date_created, date_last_updated,",
+      "contributes_to_aggregate_classification FROM clinvar",
+      "WHERE record_kind = 'scv_assertion'"
+    ),
+    conditions = paste(
+      "CREATE OR REPLACE VIEW clinvar_conditions AS SELECT release_id, record_ordinal,",
+      "vcv_accession, rcv_entity_id, scv_entity_id, entity_id AS condition_id,",
+      "context_type, context_id, trait_id, trait_type, trait_set_id, trait_set_type,",
+      "preferred_name, database_name, database_id,",
+      "contributes_to_aggregate_classification FROM clinvar",
+      "WHERE record_kind = 'condition'"
+    ),
+    condition_names = paste(
+      "CREATE OR REPLACE VIEW clinvar_condition_names AS SELECT release_id,",
+      "record_ordinal, vcv_accession, rcv_entity_id, scv_entity_id,",
+      "parent_id AS condition_id, entity_id AS name_id, name_type, value_text AS name",
+      "FROM clinvar WHERE record_kind = 'condition_name'"
+    ),
+    xrefs = paste(
+      "CREATE OR REPLACE VIEW clinvar_xrefs AS SELECT release_id, record_ordinal,",
+      "vcv_accession, rcv_entity_id, scv_entity_id, context_type, context_id,",
+      "entity_id AS xref_id, database_name, database_id, xref_type",
+      "FROM clinvar WHERE record_kind = 'xref'"
+    ),
+    observations = paste(
+      "CREATE OR REPLACE VIEW clinvar_observations AS SELECT release_id, record_ordinal,",
+      "vcv_accession, scv_entity_id, entity_id AS observation_id, origin, species,",
+      "affected_status, number_tested, method_type FROM clinvar",
+      "WHERE record_kind = 'observation'"
+    ),
+    citations = paste(
+      "CREATE OR REPLACE VIEW clinvar_citations AS SELECT release_id, record_ordinal,",
+      "vcv_accession, rcv_entity_id, scv_entity_id, entity_id AS citation_id,",
+      "context_type, context_id, citation_type, abbreviation, url FROM clinvar",
+      "WHERE record_kind = 'citation'"
+    ),
+    citation_identifiers = paste(
+      "CREATE OR REPLACE VIEW clinvar_citation_identifiers AS SELECT release_id,",
+      "record_ordinal, vcv_accession, rcv_entity_id, scv_entity_id,",
+      "parent_id AS citation_id, entity_id AS identifier_entity_id,",
+      "identifier_source AS source, identifier FROM clinvar",
+      "WHERE record_kind = 'citation_identifier'"
+    ),
+    attributes = paste(
+      "CREATE OR REPLACE VIEW clinvar_attributes AS SELECT release_id, record_ordinal,",
+      "vcv_accession, rcv_entity_id, scv_entity_id, entity_id AS attribute_id,",
+      "context_type, context_id, attribute_type, integer_value, value_text AS value",
+      "FROM clinvar WHERE record_kind = 'attribute'"
+    ),
+    text = paste(
+      "CREATE OR REPLACE VIEW clinvar_text AS",
+      "SELECT release_id, record_ordinal, entity_ordinal AS ordinal,",
+      "entity_id AS document_id, vcv_accession, rcv_entity_id, scv_entity_id,",
+      "context_type, context_id, section, text_value AS text FROM clinvar",
+      "WHERE record_kind = 'text' UNION ALL",
+      "SELECT release_id, record_ordinal, 0, entity_id, vcv_accession,",
+      "rcv_entity_id, scv_entity_id, 'condition', parent_id,",
+      "'condition_name:' || coalesce(name_type, 'unspecified'), value_text",
+      "FROM clinvar WHERE record_kind = 'condition_name' UNION ALL",
+      "SELECT release_id, record_ordinal, 0, entity_id || '#preferred_name',",
+      "vcv_accession, rcv_entity_id, scv_entity_id, context_type, context_id,",
+      "'condition_preferred_name', preferred_name FROM clinvar",
+      "WHERE record_kind = 'condition' AND preferred_name IS NOT NULL UNION ALL",
+      "SELECT release_id, record_ordinal, 0, entity_id, vcv_accession,",
+      "rcv_entity_id, scv_entity_id, context_type, context_id,",
+      "'attribute:' || coalesce(attribute_type, 'unspecified'), value_text",
+      "FROM clinvar WHERE record_kind = 'attribute' AND value_text IS NOT NULL"
+    ),
+    vcf_coordinates = paste(
+      "CREATE OR REPLACE VIEW clinvar_vcf AS SELECT l.release_id,",
+      "l.record_ordinal, l.record_key AS coordinate_key, l.vcv_accession,",
+      "l.parent_id AS allele_entity_id, a.allele_id, a.variation_id,",
+      "l.assembly, l.assembly_accession_version, l.sequence_accession,",
+      "l.chromosome, CASE WHEN l.sequence_accession IS NOT NULL AND",
+      "(NOT starts_with(l.sequence_accession, 'NC_') OR",
+      "coalesce(l.chromosome, '') NOT IN ('1', '2', '3', '4', '5', '6', '7', '8',",
+      "'9', '10', '11', '12', '13', '14', '15', '16', '17', '18',",
+      "'19', '20', '21', '22', 'X', 'Y', 'M', 'MT'))",
+      "THEN l.sequence_accession WHEN l.assembly = 'GRCh38' THEN",
+      "CASE WHEN l.chromosome IN ('M', 'MT') THEN 'chrM'",
+      "ELSE 'chr' || l.chromosome END",
+      "ELSE CASE WHEN l.chromosome = 'MT' THEN 'M' ELSE l.chromosome END END",
+      "AS contig, l.position_vcf AS position,",
+      "l.reference_allele_vcf AS reference,",
+      "l.alternate_allele_vcf AS alternate, l.start, l.stop,",
+      "l.for_display, a.canonical_spdi FROM clinvar l JOIN clinvar a",
+      "ON a.release_id = l.release_id AND a.record_kind = 'allele'",
+      "AND a.entity_id = l.parent_id WHERE l.record_kind = 'location'",
+      "AND l.assembly IN ('GRCh37', 'GRCh38')",
+      "AND l.position_vcf IS NOT NULL AND l.position_vcf > 0",
+      "AND l.reference_allele_vcf IS NOT NULL",
+      "AND l.alternate_allele_vcf IS NOT NULL",
+      "AND trim(l.reference_allele_vcf) <> ''",
+      "AND trim(l.alternate_allele_vcf) <> ''",
+      "AND lower(l.reference_allele_vcf) <> 'na'",
+      "AND lower(l.alternate_allele_vcf) <> 'na'",
+      "AND l.reference_allele_vcf <> l.alternate_allele_vcf"
+    ),
     normalized_alleles = paste(
       "CREATE OR REPLACE VIEW clinvar_normalized_alleles AS SELECT",
-      "a.release_id, a.vcv_accession, a.allele_id, a.variation_id,",
-      "l.assembly, l.chromosome, l.position_vcf,",
-      "l.reference_allele_vcf AS reference, l.alternate_allele_vcf AS alternate,",
-      "a.canonical_spdi FROM clinvar_alleles a JOIN clinvar_locations l",
-      "ON l.release_id = a.release_id AND l.allele_entity_id = a.allele_entity_id",
-      "WHERE l.position_vcf IS NOT NULL AND l.reference_allele_vcf IS NOT NULL",
-      "AND l.alternate_allele_vcf IS NOT NULL"
+      "release_id, vcv_accession, allele_id, variation_id, assembly, chromosome,",
+      "position AS position_vcf, reference, alternate, canonical_spdi",
+      "FROM clinvar_vcf"
     ),
     disease_aggregates = paste(
       "CREATE OR REPLACE VIEW clinvar_disease_aggregates AS SELECT",
@@ -242,18 +308,14 @@ rclinvarbitration_schema_sql <- function() {
       "AND i.citation_id = c.citation_id AND i.vcv_accession = c.vcv_accession"
     ),
     semantic_documents = paste(
-      "CREATE OR REPLACE VIEW clinvar_semantic_documents AS WITH genes AS (SELECT",
-      "release_id, vcv_accession,",
-      "list(DISTINCT gene_id ORDER BY gene_id) FILTER (WHERE gene_id IS NOT NULL) AS gene_ids,",
-      "list(DISTINCT symbol ORDER BY symbol) FILTER (WHERE symbol IS NOT NULL) AS gene_symbols",
-      "FROM clinvar_genes GROUP BY release_id, vcv_accession)",
-      "SELECT concat_ws(':', t.release_id, t.vcv_accession, t.document_id,",
+      "CREATE OR REPLACE VIEW clinvar_semantic_documents AS SELECT",
+      "concat_ws(':', t.release_id, t.vcv_accession, t.document_id,",
       "cast(t.record_ordinal AS VARCHAR), cast(t.ordinal AS VARCHAR)) AS semantic_document_id,",
       "t.release_id, t.vcv_accession, t.rcv_entity_id, t.scv_entity_id,",
-      "t.context_type, t.context_id, t.section, t.text, g.gene_ids, g.gene_symbols,",
+      "t.context_type, t.context_id, t.section, t.text,",
       "s.scv_accession, s.submitter_name, s.classification AS submitted_classification,",
       "s.review_status AS submitted_review_status, s.date_last_evaluated",
-      "FROM clinvar_text t LEFT JOIN genes g USING (release_id, vcv_accession)",
+      "FROM clinvar_text t",
       "LEFT JOIN clinvar_scv_assertions s ON s.release_id = t.release_id",
       "AND s.assertion_entity_id = t.scv_entity_id"
     ),
@@ -352,188 +414,274 @@ rclinvarbitration_schema_sql <- function() {
 #' @return `con`, invisibly.
 #' @export
 rclinvarbitration_init <- function(con) {
+  layout <- DBI::dbGetQuery(
+    con,
+    paste(
+      "SELECT table_name, table_type FROM information_schema.tables",
+      "WHERE table_schema = current_schema()",
+      "AND table_name IN ('clinvar', 'clinvar_variants')"
+    )
+  )
+  has_canonical <- any(
+    layout$table_name == "clinvar" & layout$table_type == "BASE TABLE"
+  )
+  has_legacy <- any(
+    layout$table_name == "clinvar_variants" &
+      layout$table_type == "BASE TABLE"
+  )
+  if (has_legacy && !has_canonical) {
+    stop(
+      "This database uses the retired multi-table ClinVar layout. ",
+      "Import the release into a new database; in-place initialization would ",
+      "replace legacy table names with compatibility views.",
+      call. = FALSE
+    )
+  }
   for (statement in unname(rclinvarbitration_schema_sql())) DBI::dbExecute(con, statement)
   invisible(con)
 }
 
-rclinvarbitration_entity_insert_sql <- function(table, entity_type, select_sql) {
-  paste0(
-    "INSERT INTO ", table, " ", select_sql,
-    " FROM rclinvarbitration_import_entities WHERE entity_type = '", entity_type, "'"
-  )
-}
-
 rclinvarbitration_import_statements <- function(release_sql) {
   field <- function(name) paste0("rclinvar_json_field(fields_json, '", name, "')")
+  insert <- function(entity_type, fields = character()) {
+    common <- c(
+      release_id = release_sql,
+      record_kind = rclinvarbitration_sql_string(entity_type),
+      record_key = paste0(
+        rclinvarbitration_sql_string(entity_type), " || '|' || entity_id"
+      ),
+      record_ordinal = "record_ordinal",
+      entity_ordinal = "entity_ordinal",
+      vcv_accession = "vcv_accession",
+      rcv_entity_id = "rcv_entity_id",
+      scv_entity_id = "scv_entity_id",
+      entity_id = "entity_id",
+      parent_type = "parent_type",
+      parent_id = "parent_id"
+    )
+    values <- c(common, fields)
+    paste0(
+      "INSERT INTO clinvar (", paste(names(values), collapse = ", "), ") SELECT ",
+      paste(unname(values), collapse = ", "),
+      " FROM rclinvarbitration_import_entities WHERE entity_type = ",
+      rclinvarbitration_sql_string(entity_type)
+    )
+  }
   c(
-    variants = rclinvarbitration_entity_insert_sql(
-      "clinvar_variants", "variation",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, vcv_accession,",
-        "try_cast(", field("version"), " AS UINTEGER),",
-        "try_cast(", field("variation_id"), " AS UBIGINT),",
-        field("variation_name"), ",", field("variation_type"), ",",
-        field("record_type"), ",", field("record_status"), ",", field("species"), ",",
-        "try_cast(", field("date_created"), " AS DATE),",
-        "try_cast(", field("date_last_updated"), " AS DATE),",
-        "try_cast(", field("most_recent_submission"), " AS DATE),",
-        "try_cast(", field("number_of_submissions"), " AS UINTEGER),",
-        "try_cast(", field("number_of_submitters"), " AS UINTEGER),",
-        field("classification"), ",", field("review_status"), ",",
-        "try_cast(", field("date_last_evaluated"), " AS DATE)"
+    variants = insert(
+      "variation",
+      c(
+        vcv_version = paste0("try_cast(", field("version"), " AS UINTEGER)"),
+        variation_id = paste0("try_cast(", field("variation_id"), " AS UBIGINT)"),
+        variation_name = field("variation_name"),
+        variation_type = field("variation_type"),
+        record_type = field("record_type"),
+        record_status = field("record_status"),
+        species = field("species"),
+        date_created = paste0("try_cast(", field("date_created"), " AS DATE)"),
+        date_last_updated = paste0(
+          "try_cast(", field("date_last_updated"), " AS DATE)"
+        ),
+        most_recent_submission = paste0(
+          "try_cast(", field("most_recent_submission"), " AS DATE)"
+        ),
+        number_of_submissions = paste0(
+          "try_cast(", field("number_of_submissions"), " AS UINTEGER)"
+        ),
+        number_of_submitters = paste0(
+          "try_cast(", field("number_of_submitters"), " AS UINTEGER)"
+        ),
+        classification = field("classification"),
+        review_status = field("review_status"),
+        date_last_evaluated = paste0(
+          "try_cast(", field("date_last_evaluated"), " AS DATE)"
+        )
       )
     ),
-    alleles = rclinvarbitration_entity_insert_sql(
-      "clinvar_alleles", "allele",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, vcv_accession, entity_id,",
-        "CASE WHEN parent_type = 'allele' THEN parent_id END,",
-        "try_cast(", field("allele_id"), " AS UBIGINT),",
-        "try_cast(", field("variation_id"), " AS UBIGINT),",
-        field("name"), ",", field("variant_type"), ",", field("canonical_spdi")
+    alleles = insert(
+      "allele",
+      c(
+        parent_allele_entity_id = "CASE WHEN parent_type = 'allele' THEN parent_id END",
+        allele_id = paste0("try_cast(", field("allele_id"), " AS UBIGINT)"),
+        variation_id = paste0("try_cast(", field("variation_id"), " AS UBIGINT)"),
+        allele_name = field("name"),
+        variant_type = field("variant_type"),
+        canonical_spdi = field("canonical_spdi")
       )
     ),
-    locations = rclinvarbitration_entity_insert_sql(
-      "clinvar_locations", "location",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, vcv_accession, parent_id, entity_id,",
-        field("assembly"), ",", field("assembly_accession_version"), ",",
-        field("assembly_status"), ",", field("chr"), ",", field("accession"), ",",
-        "try_cast(", field("start"), " AS UBIGINT), try_cast(", field("stop"), " AS UBIGINT),",
-        "try_cast(", field("position_vcf"), " AS UBIGINT),",
-        field("reference_allele_vcf"), ",", field("alternate_allele_vcf"), ",",
-        "try_cast(", field("for_display"), " AS BOOLEAN)"
+    locations = insert(
+      "location",
+      c(
+        assembly = field("assembly"),
+        assembly_accession_version = field("assembly_accession_version"),
+        assembly_status = field("assembly_status"),
+        chromosome = field("chr"),
+        sequence_accession = field("accession"),
+        start = paste0("try_cast(", field("start"), " AS UBIGINT)"),
+        stop = paste0("try_cast(", field("stop"), " AS UBIGINT)"),
+        position_vcf = paste0(
+          "try_cast(", field("position_vcf"), " AS UBIGINT)"
+        ),
+        reference_allele_vcf = field("reference_allele_vcf"),
+        alternate_allele_vcf = field("alternate_allele_vcf"),
+        for_display = paste0("try_cast(", field("for_display"), " AS BOOLEAN)")
       )
     ),
-    genes = rclinvarbitration_entity_insert_sql(
-      "clinvar_genes", "gene",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, vcv_accession, parent_id, entity_id,",
-        "try_cast(", field("gene_id"), " AS UBIGINT),", field("symbol"), ",",
-        field("hgnc_id"), ",", field("full_name"), ",",
-        field("relationship_type"), ",", field("source")
+    genes = insert(
+      "gene",
+      c(
+        gene_id = paste0("try_cast(", field("gene_id"), " AS UBIGINT)"),
+        gene_symbol = field("symbol"),
+        hgnc_id = field("hgnc_id"),
+        gene_name = field("full_name"),
+        relationship_type = field("relationship_type"),
+        source = field("source")
       )
     ),
-    rcvs = rclinvarbitration_entity_insert_sql(
-      "clinvar_rcv_assertions", "rcv_assertion",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, vcv_accession, entity_id,",
-        "try_cast(", field("version"), " AS UINTEGER),", field("title"), ",",
-        field("classification"), ",", field("review_status"), ",",
-        "try_cast(", field("date_last_evaluated"), " AS DATE),",
-        "try_cast(", field("submission_count"), " AS UINTEGER)"
+    rcvs = insert(
+      "rcv_assertion",
+      c(
+        accession = "entity_id",
+        version = paste0("try_cast(", field("version"), " AS UINTEGER)"),
+        title = field("title"),
+        classification = field("classification"),
+        review_status = field("review_status"),
+        date_last_evaluated = paste0(
+          "try_cast(", field("date_last_evaluated"), " AS DATE)"
+        ),
+        submission_count = paste0(
+          "try_cast(", field("submission_count"), " AS UINTEGER)"
+        )
       )
     ),
-    scvs = rclinvarbitration_entity_insert_sql(
-      "clinvar_scv_assertions", "scv_assertion",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, entity_ordinal, vcv_accession, entity_id,",
-        "try_cast(", field("id"), " AS UBIGINT),", field("scv_accession"), ",",
-        "try_cast(", field("scv_version"), " AS UINTEGER),", field("submitter_name"), ",",
-        "try_cast(", field("submitter_id"), " AS UBIGINT),", field("organization_category"), ",",
-        field("organization_abbreviation"), ",", field("local_key"), ",",
-        field("submitted_assembly"), ",", field("submission_title"), ",",
-        field("assertion_type"), ",", field("record_status"), ",",
-        field("classification"), ",", field("review_status"), ",",
-        "try_cast(", field("date_last_evaluated"), " AS DATE),",
-        "try_cast(", field("submission_date"), " AS DATE),",
-        "try_cast(", field("date_created"), " AS DATE),",
-        "try_cast(", field("date_last_updated"), " AS DATE),",
-        "try_cast(", field("contributes_to_aggregate_classification"), " AS BOOLEAN)"
+    scvs = insert(
+      "scv_assertion",
+      c(
+        source_ordinal = "entity_ordinal",
+        assertion_id = paste0("try_cast(", field("id"), " AS UBIGINT)"),
+        accession = field("scv_accession"),
+        version = paste0("try_cast(", field("scv_version"), " AS UINTEGER)"),
+        submitter_name = field("submitter_name"),
+        submitter_id = paste0("try_cast(", field("submitter_id"), " AS UBIGINT)"),
+        organization_category = field("organization_category"),
+        organization_abbreviation = field("organization_abbreviation"),
+        local_key = field("local_key"),
+        submitted_assembly = field("submitted_assembly"),
+        submission_title = field("submission_title"),
+        assertion_type = field("assertion_type"),
+        record_status = field("record_status"),
+        classification = field("classification"),
+        review_status = field("review_status"),
+        date_last_evaluated = paste0(
+          "try_cast(", field("date_last_evaluated"), " AS DATE)"
+        ),
+        submission_date = paste0(
+          "try_cast(", field("submission_date"), " AS DATE)"
+        ),
+        date_created = paste0("try_cast(", field("date_created"), " AS DATE)"),
+        date_last_updated = paste0(
+          "try_cast(", field("date_last_updated"), " AS DATE)"
+        ),
+        contributes_to_aggregate_classification = paste0(
+          "try_cast(", field("contributes_to_aggregate_classification"),
+          " AS BOOLEAN)"
+        )
       )
     ),
-    conditions = rclinvarbitration_entity_insert_sql(
-      "clinvar_conditions", "condition",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, vcv_accession, rcv_entity_id, scv_entity_id,",
-        "entity_id, parent_type, parent_id,", field("id"), ",", field("type"), ",",
-        field("trait_set_id"), ",", field("trait_set_type"), ",",
-        field("preferred_name"), ",", field("db"), ",", field("id"), ",",
-        "try_cast(", field("contributes_to_aggregate_classification"), " AS BOOLEAN)"
+    conditions = insert(
+      "condition",
+      c(
+        context_type = "parent_type",
+        context_id = "parent_id",
+        trait_id = field("id"),
+        trait_type = field("type"),
+        trait_set_id = field("trait_set_id"),
+        trait_set_type = field("trait_set_type"),
+        preferred_name = field("preferred_name"),
+        database_name = field("db"),
+        database_id = field("id"),
+        contributes_to_aggregate_classification = paste0(
+          "try_cast(", field("contributes_to_aggregate_classification"),
+          " AS BOOLEAN)"
+        )
       )
     ),
-    condition_names = rclinvarbitration_entity_insert_sql(
-      "clinvar_condition_names", "condition_name",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, vcv_accession, rcv_entity_id, scv_entity_id,",
-        "parent_id, entity_id,", field("type"), ",", field("value")
+    condition_names = insert(
+      "condition_name",
+      c(
+        name_type = field("type"),
+        value_text = field("value")
       )
     ),
-    xrefs = rclinvarbitration_entity_insert_sql(
-      "clinvar_xrefs", "xref",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, vcv_accession, rcv_entity_id, scv_entity_id,",
-        "parent_type, parent_id, entity_id,", field("db"), ",", field("id"), ",", field("type")
+    xrefs = insert(
+      "xref",
+      c(
+        context_type = "parent_type",
+        context_id = "parent_id",
+        database_name = field("db"),
+        database_id = field("id"),
+        xref_type = field("type")
       )
     ),
-    observations = rclinvarbitration_entity_insert_sql(
-      "clinvar_observations", "observation",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, vcv_accession, scv_entity_id, entity_id,",
-        field("origin"), ",", field("species"), ",", field("affected_status"), ",",
-        "try_cast(", field("number_tested"), " AS UINTEGER),", field("method_type")
+    observations = insert(
+      "observation",
+      c(
+        origin = field("origin"),
+        species = field("species"),
+        affected_status = field("affected_status"),
+        number_tested = paste0("try_cast(", field("number_tested"), " AS UINTEGER)"),
+        method_type = field("method_type")
       )
     ),
-    citations = rclinvarbitration_entity_insert_sql(
-      "clinvar_citations", "citation",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, vcv_accession, rcv_entity_id, scv_entity_id,",
-        "entity_id, parent_type, parent_id,", field("type"), ",", field("abbrev"), ",", field("url")
+    citations = insert(
+      "citation",
+      c(
+        context_type = "parent_type",
+        context_id = "parent_id",
+        citation_type = field("type"),
+        abbreviation = field("abbrev"),
+        url = field("url")
       )
     ),
-    citation_identifiers = rclinvarbitration_entity_insert_sql(
-      "clinvar_citation_identifiers", "citation_identifier",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, vcv_accession, rcv_entity_id, scv_entity_id,",
-        "parent_id, entity_id,", field("source"), ",", field("identifier")
+    citation_identifiers = insert(
+      "citation_identifier",
+      c(
+        identifier_source = field("source"),
+        identifier = field("identifier")
       )
     ),
-    attributes = rclinvarbitration_entity_insert_sql(
-      "clinvar_attributes", "attribute",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, vcv_accession, rcv_entity_id, scv_entity_id,",
-        "entity_id, parent_type, parent_id,", field("type"), ",",
-        "try_cast(", field("integer_value"), " AS BIGINT),", field("value")
+    attributes = insert(
+      "attribute",
+      c(
+        context_type = "parent_type",
+        context_id = "parent_id",
+        attribute_type = field("type"),
+        integer_value = paste0(
+          "try_cast(", field("integer_value"), " AS BIGINT)"
+        ),
+        value_text = field("value")
       )
     ),
-    text_elements = rclinvarbitration_entity_insert_sql(
-      "clinvar_text", "text",
-      paste0(
-        "SELECT ", release_sql, ", record_ordinal, entity_ordinal, entity_id, vcv_accession,",
-        "rcv_entity_id, scv_entity_id, parent_type, parent_id,",
-        "coalesce(", field("section"), ", 'text'),", field("value")
+    text_elements = insert(
+      "text",
+      c(
+        context_type = "parent_type",
+        context_id = "parent_id",
+        section = paste0("coalesce(", field("section"), ", 'text')"),
+        text_value = field("value")
       )
-    ),
-    text_condition_names = paste0(
-      "INSERT INTO clinvar_text SELECT release_id, record_ordinal, 0, name_id, vcv_accession,",
-      "rcv_entity_id, scv_entity_id, 'condition', condition_id,",
-      "'condition_name:' || coalesce(name_type, 'unspecified'), name ",
-      "FROM clinvar_condition_names WHERE release_id = ", release_sql
-    ),
-    text_condition_preferred = paste0(
-      "INSERT INTO clinvar_text SELECT release_id, record_ordinal, 0, condition_id || '#preferred_name',",
-      "vcv_accession, rcv_entity_id, scv_entity_id, context_type, context_id,",
-      "'condition_preferred_name', preferred_name FROM clinvar_conditions WHERE preferred_name IS NOT NULL ",
-      "AND release_id = ", release_sql
-    ),
-    text_attributes = paste0(
-      "INSERT INTO clinvar_text SELECT release_id, record_ordinal, 0, attribute_id, vcv_accession,",
-      "rcv_entity_id, scv_entity_id, context_type, context_id,",
-      "'attribute:' || coalesce(attribute_type, 'unspecified'), value ",
-      "FROM clinvar_attributes WHERE value IS NOT NULL AND release_id = ", release_sql
     )
   )
 }
 
-#' Stream a ClinVar VCV XML release into relational DuckDB tables
+#' Stream a ClinVar VCV XML release into one relational DuckDB table
 #'
 #' The native extension reads `.xml` and `.xml.gz` with a libxml2 forward
-#' reader. One compact JSON-backed row per selected ClinVar entity is written to
-#' a disk-backed staging table in one XML pass, projected into the public
-#' ClinVar relations without an EAV pivot, and dropped. No XML DOM, XML blob,
-#' generic parser-node graph, or R data-frame materialization is used. Each
-#' public relation is committed independently, the release catalogue row marks
-#' completion, and failed imports remove partial rows for `release_id`.
+#' reader. One compact row per selected ClinVar entity is written to temporary
+#' spill-backed staging in one XML pass, projected into the scalar `clinvar`
+#' table, and dropped. Repeated XML entities become additional rows; no XML DOM,
+#' durable JSON, nested value, generic parser-node graph, or R data-frame
+#' materialization is used. Compatibility relations are views over `clinvar`.
 #'
 #' @param con A DuckDB DBI connection.
 #' @param path Path to an official ClinVar VCV XML or XML.GZ release.
@@ -589,12 +737,7 @@ rclinvarbitration_import_xml <- function(
     stop("`release_id` already exists; use `replace = TRUE` to replace it.", call. = FALSE)
   }
 
-  tables <- c(
-    "clinvar_text", "clinvar_attributes", "clinvar_citation_identifiers", "clinvar_citations",
-    "clinvar_observations", "clinvar_xrefs", "clinvar_condition_names", "clinvar_conditions",
-    "clinvar_scv_assertions", "clinvar_rcv_assertions", "clinvar_genes", "clinvar_locations",
-    "clinvar_alleles", "clinvar_variants", "clinvar_releases"
-  )
+  tables <- c("clinvar", "clinvar_releases")
   staging_table <- "rclinvarbitration_import_entities"
   import_started <- FALSE
   import_complete <- FALSE
@@ -615,18 +758,21 @@ rclinvarbitration_import_xml <- function(
     try(DBI::dbExecute(con, paste("DROP TABLE IF EXISTS", staging_table)), silent = TRUE)
   }, add = TRUE)
 
-  # Materialize before mutating an existing release. On a file-backed
-  # connection this keeps the potentially large staging relation on disk.
+  # Materialize before mutating an existing release. TEMP keeps the import
+  # high-water mark out of the durable catalogue; DuckDB may spill its blocks
+  # to temp_directory under the configured memory limit.
   DBI::dbExecute(con, paste("DROP TABLE IF EXISTS", staging_table))
   DBI::dbExecute(
     con,
-    paste0("CREATE TABLE ", staging_table, " AS SELECT * FROM clinvar_xml_entities(", path_sql, ")")
+    paste0(
+      "CREATE TEMP TABLE ", staging_table,
+      " AS SELECT * FROM clinvar_xml_entities(", path_sql, ")"
+    )
   )
 
-  # Each projection commits independently. A release catalogue row is written
-  # only after every relation succeeds, and the on-exit cleanup removes partial
-  # rows after an error. This avoids retaining an entire ClinVar release in one
-  # DuckDB transaction.
+  # Each record kind is appended as one contiguous block. A release catalogue
+  # row is written only after every kind succeeds, and on-exit cleanup removes
+  # partial rows after an error.
   import_started <- TRUE
   # Clear both a complete replaced release and any rows left by a process that
   # was terminated before its release catalogue marker could be written.
@@ -636,28 +782,31 @@ rclinvarbitration_import_xml <- function(
     con,
     paste0(
       "INSERT INTO clinvar_releases ",
-      "(release_id, source_path, source_url, source_md5, source_bytes) VALUES (",
+      "(release_id, source_path, source_url, source_md5, source_bytes, source_kind) VALUES (",
       release_sql, ", ", path_sql, ", ", source_url_sql, ", ", source_md5_sql,
-      ", ", sprintf("%.0f", source_bytes), ")"
+      ", ", sprintf("%.0f", source_bytes), ", 'vcv_xml')"
     )
   )
   import_complete <- TRUE
   DBI::dbExecute(con, paste("DROP TABLE", staging_table))
 
-  count_tables <- c(
-    variants = "clinvar_variants",
-    alleles = "clinvar_alleles",
-    rcv_assertions = "clinvar_rcv_assertions",
-    scv_assertions = "clinvar_scv_assertions",
-    conditions = "clinvar_conditions",
-    observations = "clinvar_observations",
-    citations = "clinvar_citations",
-    text = "clinvar_text"
+  count_kinds <- c(
+    variants = "variation",
+    alleles = "allele",
+    rcv_assertions = "rcv_assertion",
+    scv_assertions = "scv_assertion",
+    conditions = "condition",
+    observations = "observation",
+    citations = "citation",
+    text = "text"
   )
-  vapply(count_tables, function(table) {
+  vapply(count_kinds, function(kind) {
     DBI::dbGetQuery(
       con,
-      paste0("SELECT count(*) AS n FROM ", table, " WHERE release_id = ", release_sql)
+      paste0(
+        "SELECT count(*) AS n FROM clinvar WHERE release_id = ", release_sql,
+        " AND record_kind = ", rclinvarbitration_sql_string(kind)
+      )
     )$n[[1L]]
   }, numeric(1))
 }

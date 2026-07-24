@@ -6,11 +6,11 @@
 \alias{RClinVarbitration-package}
 \title{RClinVarbitration: relational ClinVar evidence in DuckDB}
 \description{
-A DuckDB-native, XML-first ClinVar store. Its package-owned native extension
-streams official \code{.xml.gz} VCV releases through libxml2 in one pass. SQL
-materializes VCV, allele, location, gene, RCV, SCV, condition, observation,
-citation, attribute, and evidence-text relations; versioned
-ClinVarbitration policy is deliberately derived from those source records.
+A DuckDB-native tidy ClinVar store. Flat reports and optional VCV XML both
+feed one scalar \code{clinvar} table. The default flat path creates variation,
+allele, GRCh37/GRCh38 location, decision, SCV, RCV, and gene rows. The
+package-owned native extension adds XML-only observations, conditions,
+citations, attributes, and attributable text to the same contract.
 }
 \seealso{
 Useful links:

@@ -31,10 +31,10 @@ hit status.
 }
 \description{
 Downloads either the current ClinVar release or a named monthly archive from
-the NCBI HTTPS service. The VCV XML file is the normal input to
-\code{\link[=rclinvarbitration_import_xml]{rclinvarbitration_import_xml()}}. The two flat files are optional,
-validation-only inputs to
-\code{\link[=rclinvarbitration_reproduce_clinvarbitration_parquet]{rclinvarbitration_reproduce_clinvarbitration_parquet()}}.
+the NCBI HTTPS service. The flat reports are the compact default input to
+\code{\link[=rclinvarbitration_import_flat]{rclinvarbitration_import_flat()}}. VCV XML feeds the same scalar \code{clinvar}
+table when an analysis also needs observations, citations, conditions,
+attributes, or attributable text that the flat reports do not contain.
 }
 \details{
 Existing files form a local cache. Current files and archived VCV XML files

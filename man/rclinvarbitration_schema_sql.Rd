@@ -10,11 +10,9 @@ rclinvarbitration_schema_sql()
 A named character vector of SQL statements.
 }
 \description{
-Returns DuckDB DDL for the focused ClinVar schema. Public identifiers and
-domain relations are retained directly: VCV variants, alleles and assembly
-locations, genes, RCV aggregates, SCV submissions, conditions, observations,
-citations, attributes, and attributable discovery text. XML parser nodes are
-not persisted. The release catalogue enforces its small primary key; the
-release-scale analytical tables expose logical key columns without DuckDB
-ART indexes so complete imports remain memory-bounded.
+Returns DuckDB DDL for one scalar ClinVar fact table plus compatibility
+views. Every XML entity is one \code{clinvar} row identified by \code{record_kind};
+repeated conditions, observations, citations, names, and text are additional
+rows rather than nested values or Cartesian products. The release catalogue
+and small policy configuration tables remain separate.
 }

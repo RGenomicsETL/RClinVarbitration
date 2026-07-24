@@ -1,0 +1,21 @@
+## fixture comment 1
+## fixture comment 2
+## fixture comment 3
+## fixture comment 4
+## fixture comment 5
+## fixture comment 6
+## fixture comment 7
+## fixture comment 8
+## fixture comment 9
+## fixture comment 10
+## fixture comment 11
+## fixture comment 12
+## fixture comment 13
+## fixture comment 14
+## fixture comment 15
+## fixture comment 16
+## fixture comment 17
+## fixture comment 18
+#VariationID	ClinicalSignificance	DateLastEvaluated	Description	SubmittedPhenotypeInfo	ReportedPhenotypeInfo	ReviewStatus	CollectionMethod	OriginCounts	Submitter	SCV	SubmittedGeneSymbol	ExplanationOfInterpretation	SomaticClinicalImpact	Oncogenicity	ContributesToAggregateClassification
+201	Pathogenic	Jan 01, 2024	Evidence one	MedGen:C0000001	C0000001:Disease one	criteria provided, single submitter	clinical testing	germline:1	Lab A	SCV000000001.2	GENE1	Interpretation one	-	-	yes
+201	Likely pathogenic	Jan 02, 2024	Evidence two	MedGen:C0000002	C0000002:Disease two	criteria provided, single submitter	clinical testing	germline:1	Lab B	SCV000000002.1	GENE1	Interpretation two	-	-	yes

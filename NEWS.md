@@ -1,34 +1,51 @@
 # RClinVarbitration 0.1.1
 
-- Add an enhanced disease-decision Parquet schema with a stable record key,
-  complete-row SHA-256 receipt, policy counts, and deterministic nested SCV,
-  RCV, and gene receipts. RCV items keep their own disease keys instead of
-  implying equivalence with an SCV disease key. The source release receipt
-  remains separate so DuckLake snapshot changes, rather than a second
-  package-local delta engine, remain the change authority.
+- Replace the release-scale multi-table layout with one scalar `clinvar` table.
+  `record_kind` identifies variations, alleles, locations, genes, RCVs, SCVs,
+  conditions, observations, citations, attributes, text, and flat-import
+  policy decisions. Repeated source elements remain rows rather than nested
+  values. XML-derived policy decisions remain SQL views and are materialized
+  only by an explicit export. The former public relation names remain
+  query-compatible views.
+- Add `rclinvarbitration_import_flat()` as the compact default import. It joins
+  official `variant_summary` and `submission_summary` reports directly into
+  the canonical table. The XML importer now feeds the same table when richer
+  source evidence is needed. Release-scale flat imports execute one bounded
+  record-kind projection at a time so large deduplication and policy states do
+  not remain live together.
+- Retain GRCh37 and GRCh38 locations side by side. `clinvar_vcf` exposes their
+  VCF `CHROM/POS/REF/ALT` tuples, preserves exact sequence accessions, keeps
+  alternate placements distinct, and does not collapse X/Y PAR placements.
+  Source locations lacking a complete VCF tuple remain in `clinvar`.
+  Allele-level decisions and allele-gene facts deduplicate at their semantic
+  keys even when one allele has multiple placements or a source gene list
+  repeats a token.
+- Add `rclinvarbitration_publish_ducklake()` as the single key-based
+  publication path for tidy ClinVar exports. It registers Parquet without
+  collecting rows in R, leaves unchanged records untouched, publishes inserts,
+  updates, and withdrawals in one snapshot, and returns native DuckLake
+  change counts.
+- Use temporary spill-backed XML staging and project each record kind as one
+  contiguous block. Staging no longer leaves its high-water mark as free
+  blocks in the durable database. A legacy-layout guard prevents old base
+  tables from being overwritten by compatibility views.
+- Give every canonical row a stable `record_key`. Tidy Parquet omits the
+  repeated release label, keeps the release receipt separately, contains no
+  nested columns, and is compared exactly by DuckLake.
 - Add `clinvar_gene_disease_summaries` with descriptive, policy-versioned
   ClinVar evidence strata. These support retrieval and temporal reanalysis but
   are not represented as gene-validity classifications.
-- Add `submitter_exclusions` to the XML-derived Parquet exporter. Direct
-  exclusions are normalized case-insensitively, combined with a selected named
-  profile, and applied without deleting imported source submissions.
-- Replace the full-release executable README with a concise quick start and an
-  explicit comparison with upstream ClinVarbitration.
+- Add case-insensitive submitter exclusions and named policy profiles without
+  deleting imported source submissions.
+- Add `clinvar_hpo_terms`, `clinvar_literature_links`,
+  `clinvar_semantic_documents`, and disease-aware `clinvar_gene_summaries` for
+  source-attributed retrieval and VariantStory integration.
+- Add `rclinvarbitration_download_clinvar()` for current or archived VCV XML,
+  `submission_summary`, and `variant_summary` releases.
 - Add native x86-64 Windows extension builds using Rtools-provided libxml2,
   zlib, and target-aware `pkg-config`; retain Linux, macOS, and webR builds.
   Runtime artifact selection now matches exact DuckDB platform metadata and
   includes both `windows_amd64` and R-devel's `windows_amd64_mingw` identities.
-- Add `rclinvarbitration_download_clinvar()` for checksum-validated current or
-  monthly archived VCV XML downloads and optional flat-file validation inputs.
-  Download URL, digest, and source byte size can flow into the release catalogue.
-- Add `clinvar_hpo_terms`, `clinvar_literature_links`,
-  `clinvar_semantic_documents`, and disease-aware `clinvar_gene_summaries` for
-  semantic retrieval, gene panels, literature review, DuckLake publication,
-  and VariantStory integration.
-- Add pkgdown vignettes for the complete arbitration algorithm, storage/cache
-  lifecycle and measured full-release performance, and semantic/DuckLake/
-  VariantStory integration. Add a rendered `docs/ERRATA.md` audit of intentional
-  deviations and observed XML/flat/upstream differentials.
 - Execute the pinned upstream TSV algorithm on exact March 2026 flat inputs:
   all 4,125,389 keys and values match the package reproducer. Classify all 377
   XML/flat key or value differences with source-row receipts, and quantify
@@ -39,37 +56,15 @@
 - Add experimental webR/WebAssembly support. The package now builds its
   version-matched DuckDB extension as an Emscripten side module and has a
   browser smoke test that loads it and imports the compressed VCV fixture.
-
 - Project compact parser rows with the package-owned `rclinvar_json_field()`
   scalar rather than DuckDB's separately downloadable JSON extension. Imports
-  now require no extension download, including in browser/webR runtimes.
-
+  require no extension download, including in browser/webR runtimes.
 - Remove the premature local `v1` policy suffix; preserve the pinned
   `cpg-clinvarbitration-2.2.11` identifier, source-order strong-review rule,
   and separate disease- and allele-level decision views.
-- Add Parquet exporters for the VCV-derived allele policy and for direct,
-  SQL-only reproduction of ClinVarbitration from versioned NCBI flat-file
-  archives, plus a retained differential script for published Zenodo releases.
 - Retain imported SCV source order for deterministic strong-review decisions.
 - Bundle exact `C_STRUCT_UNSTABLE` extension artifacts for DuckDB `v1.5.0`
   through `v1.5.4`, selected from the enabled connection's engine version.
-- Replace generic XML node/edge/statement persistence with a one-pass,
-  ClinVar-specific entity scan and focused VCV, allele, location, gene, RCV,
-  SCV, condition, observation, citation, attribute, and evidence-text
-  relations. Staging now stores one JSON-backed row per selected entity and
-  requires no release-wide EAV grouping. Release-scale tables use logical keys
-  without memory-resident ART indexes, and each projection commits separately;
-  the release catalogue marks completion and failed imports clean partial rows.
-- Add `clinvar_disease_aggregates` and `clinvar_disease_submissions` as direct
-  RCV- and SCV-level disease-policy inputs, with canonical disease identifiers
-  selected independently of the complete retained cross-reference relation.
-- Add the `cpg-clinvarbitration-2.2.11` SQL policy,
-  configurable submitter-blinding profiles, and
-  `clinvar_policy_pathogenic_alleles` as the disease-specific P/LP join surface
-  for Rduckhts/DuckHTS.
-- Execute the README quick start against the bundled real VCV fixture. The
-  separately receipted full-release benchmark remains file-backed and does not
-  rerun during README rendering.
 
 # RClinVarbitration 0.1.0
 

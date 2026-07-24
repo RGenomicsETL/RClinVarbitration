@@ -2,7 +2,7 @@
 % Please edit documentation in R/schema.R
 \name{rclinvarbitration_import_xml}
 \alias{rclinvarbitration_import_xml}
-\title{Stream a ClinVar VCV XML release into relational DuckDB tables}
+\title{Stream a ClinVar VCV XML release into one relational DuckDB table}
 \usage{
 rclinvarbitration_import_xml(
   con,
@@ -34,10 +34,9 @@ A named numeric vector with imported entity counts.
 }
 \description{
 The native extension reads \code{.xml} and \code{.xml.gz} with a libxml2 forward
-reader. One compact JSON-backed row per selected ClinVar entity is written to
-a disk-backed staging table in one XML pass, projected into the public
-ClinVar relations without an EAV pivot, and dropped. No XML DOM, XML blob,
-generic parser-node graph, or R data-frame materialization is used. Each
-public relation is committed independently, the release catalogue row marks
-completion, and failed imports remove partial rows for \code{release_id}.
+reader. One compact row per selected ClinVar entity is written to temporary
+spill-backed staging in one XML pass, projected into the scalar \code{clinvar}
+table, and dropped. Repeated XML entities become additional rows; no XML DOM,
+durable JSON, nested value, generic parser-node graph, or R data-frame
+materialization is used. Compatibility relations are views over \code{clinvar}.
 }

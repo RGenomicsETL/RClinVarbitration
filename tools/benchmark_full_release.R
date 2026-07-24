@@ -58,6 +58,46 @@ timing <- system.time({
     source_md5 = source_md5
   )
 })
+record_counts <- DBI::dbGetQuery(
+  con,
+  paste0(
+    "SELECT record_kind, count(*) AS rows FROM clinvar WHERE release_id = ",
+    DBI::dbQuoteString(con, release_id),
+    " GROUP BY record_kind ORDER BY record_kind"
+  )
+)
+key_counts <- DBI::dbGetQuery(
+  con,
+  paste0(
+    "SELECT count(*) AS rows, count(DISTINCT record_key) AS keys ",
+    "FROM clinvar WHERE release_id = ",
+    DBI::dbQuoteString(con, release_id)
+  )
+)
+coordinate_counts <- DBI::dbGetQuery(
+  con,
+  paste0(
+    "SELECT assembly, count(*) AS rows FROM clinvar_vcf WHERE release_id = ",
+    DBI::dbQuoteString(con, release_id),
+    " GROUP BY assembly ORDER BY assembly"
+  )
+)
+placement_counts <- DBI::dbGetQuery(
+  con,
+  paste0(
+    "WITH xy AS (SELECT assembly, vcv_accession, allele_id, ",
+    "bool_or(chromosome = 'X') AS has_x, bool_or(chromosome = 'Y') AS has_y ",
+    "FROM clinvar_vcf WHERE release_id = ",
+    DBI::dbQuoteString(con, release_id),
+    " GROUP BY assembly, vcv_accession, allele_id) ",
+    "SELECT (SELECT count(*) FROM clinvar_vcf WHERE release_id = ",
+    DBI::dbQuoteString(con, release_id),
+    " AND sequence_accession IS NOT NULL ",
+    "AND NOT starts_with(sequence_accession, 'NC_')) AS alternate_rows, ",
+    "count(*) FILTER (WHERE has_x AND has_y) AS xy_dual_alleles FROM xy"
+  )
+)
+layout <- DBI::dbGetQuery(con, "DESCRIBE clinvar")
 DBI::dbExecute(con, "CHECKPOINT")
 finished_at <- Sys.time()
 database_size <- DBI::dbGetQuery(con, "PRAGMA database_size")
@@ -95,7 +135,23 @@ values <- c(
   sysname = unname(Sys.info()[["sysname"]]),
   release = unname(Sys.info()[["release"]]),
   machine = unname(Sys.info()[["machine"]]),
-  counts
+  total_rows = unname(key_counts$rows[[1L]]),
+  distinct_record_keys = unname(key_counts$keys[[1L]]),
+  duplicate_record_keys = unname(
+    key_counts$rows[[1L]] - key_counts$keys[[1L]]
+  ),
+  scalar_columns = nrow(layout),
+  nested_columns = sum(grepl("STRUCT|\\[\\]$", layout$column_type)),
+  vcf_alternate_accession_rows = placement_counts$alternate_rows[[1L]],
+  vcf_xy_dual_alleles = placement_counts$xy_dual_alleles[[1L]],
+  setNames(
+    record_counts$rows,
+    paste0("rows_", gsub("[^a-z0-9]+", "_", record_counts$record_kind))
+  ),
+  setNames(
+    coordinate_counts$rows,
+    paste0("vcf_rows_", tolower(coordinate_counts$assembly))
+  )
 )
 write.dcf(as.data.frame(as.list(values), optional = TRUE), file = result)
 print(values)

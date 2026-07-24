@@ -61,8 +61,9 @@ expect_false(any(grepl("^CREATE INDEX", rclinvarbitration_schema_sql())))
 # removed before a fresh import of the same release identifier.
 rclinvarbitration_init(con)
 DBI::dbExecute(con, "
-  INSERT INTO clinvar_variants (release_id, record_ordinal, vcv_accession)
-  VALUES ('fixture-vcv', 999, 'STALE')
+  INSERT INTO clinvar
+    (release_id, record_kind, record_key, record_ordinal, vcv_accession)
+  VALUES ('fixture-vcv', 'variation', 'variation|STALE', 999, 'STALE')
 ")
 fixture_download <- structure(
   fixture,
@@ -86,8 +87,23 @@ expect_equal(counts[["scv_assertions"]], 6)
 expect_equal(counts[["observations"]], 6)
 expect_true(counts[["conditions"]] >= 10)
 expect_true(counts[["citations"]] > 10)
-expect_true(counts[["text"]] > 10)
+expect_equal(counts[["text"]], 4)
+expect_equal(
+  DBI::dbGetQuery(
+    con, "SELECT count(*) AS n FROM clinvar WHERE record_kind = 'decision'"
+  )$n,
+  0
+)
+expect_true(DBI::dbGetQuery(con, "SELECT count(*) AS n FROM clinvar_text")$n > 10)
 expect_false("clinvar_statements" %in% DBI::dbListTables(con))
+
+legacy_con <- DBI::dbConnect(duckdb::duckdb())
+DBI::dbExecute(legacy_con, "CREATE TABLE clinvar_variants (release_id VARCHAR)")
+expect_error(
+  rclinvarbitration_init(legacy_con),
+  "retired multi-table ClinVar layout"
+)
+DBI::dbDisconnect(legacy_con, shutdown = TRUE)
 
 variant <- DBI::dbGetQuery(con, "
   SELECT vcv_accession, vcv_version, variation_id, variation_name,
@@ -117,6 +133,14 @@ expect_equal(locations$chromosome, c("17", "17"))
 expect_equal(locations$position_vcf, c(41234419, 43082402))
 expect_equal(locations$reference, c("A", "A"))
 expect_equal(locations$alternate, c("C", "C"))
+
+vcf_locations <- DBI::dbGetQuery(con, "
+  SELECT assembly, contig, position, reference, alternate
+  FROM clinvar_vcf ORDER BY assembly
+")
+expect_equal(vcf_locations$assembly, c("GRCh37", "GRCh38"))
+expect_equal(vcf_locations$contig, c("17", "chr17"))
+expect_equal(vcf_locations$position, c(41234419, 43082402))
 
 scvs <- DBI::dbGetQuery(con, "
   SELECT scv_accession, submitter_name, classification, review_status
@@ -174,8 +198,12 @@ expect_equal(gene_summary$disease_decision_count, 5)
 expect_equal(gene_summary$pathogenic_disease_decision_count, 5)
 expect_equal(
   DBI::dbGetQuery(con, "SELECT count(*) AS n FROM clinvar_semantic_documents")$n,
-  counts[["text"]]
+  DBI::dbGetQuery(con, "SELECT count(*) AS n FROM clinvar_text")$n
 )
+semantic_types <- DBI::dbGetQuery(
+  con, "DESCRIBE clinvar_semantic_documents"
+)$column_type
+expect_false(any(grepl("STRUCT|\\[\\]$", semantic_types)))
 literature <- DBI::dbGetQuery(con, "
   SELECT source, identifier, literature_url FROM clinvar_literature_links
   WHERE lower(source) = 'pubmed'
@@ -248,41 +276,62 @@ expect_error(
 )
 unlink(parquet)
 
-enhanced_parquet <- tempfile(
-  "clinvar-decisions-enhanced-", fileext = ".parquet"
+tidy_parquet <- tempfile(
+  "clinvar-decisions-tidy-", fileext = ".parquet"
 )
-enhanced_export <- rclinvarbitration_export_clinvarbitration_parquet(
-  con, enhanced_parquet, release_id = "fixture-vcv", assembly = "GRCh38",
-  schema = "enhanced"
+tidy_export <- rclinvarbitration_export_clinvarbitration_parquet(
+  con, tidy_parquet, release_id = "fixture-vcv", assembly = "GRCh38",
+  schema = "tidy"
 )
-expect_equal(enhanced_export$schema, "enhanced")
-expect_equal(enhanced_export$release_receipt$release_id, "fixture-vcv")
-enhanced <- DBI::dbGetQuery(
+expect_equal(tidy_export$schema, "tidy")
+expect_equal(tidy_export$release_receipt$release_id, "fixture-vcv")
+tidy <- DBI::dbGetQuery(
   con,
   paste0(
-    "SELECT record_key, vcv_accession, disease_key, clinical_significance, ",
-    "content_sha256, ",
-    "list_count(scv_submissions) AS scv_count, ",
-    "list_count(rcv_aggregates) AS rcv_count, ",
-    "list_count(genes) AS gene_count FROM read_parquet(",
-    DBI::dbQuoteString(con, enhanced_parquet), ")"
+    "SELECT * FROM read_parquet(",
+    DBI::dbQuoteString(con, tidy_parquet), ")"
   )
 )
-expect_equal(nrow(enhanced), enhanced_export$rows)
-expect_true(all(nzchar(enhanced$record_key)))
-expect_true(all(nchar(enhanced$content_sha256) == 64L))
-expect_true(all(enhanced$vcv_accession == "VCV000091629"))
-expect_true(all(enhanced$scv_count >= 1L))
-expect_true(all(enhanced$rcv_count == 4L))
-expect_true(all(enhanced$gene_count >= 1L))
+expect_equal(nrow(tidy), tidy_export$rows)
+expect_true(all(nzchar(tidy$record_key)))
+expect_true(all(tidy$vcv_accession == "VCV000091629"))
+expect_equal(length(unique(tidy$record_key)), nrow(tidy))
+kind_counts <- table(tidy$record_kind)
+expect_equal(
+  names(kind_counts),
+  c(
+    "allele", "attribute", "citation", "citation_identifier", "condition",
+    "condition_name", "decision", "gene", "location", "observation",
+    "rcv_assertion", "scv_assertion", "text", "variation", "xref"
+  )
+)
+expect_equal(as.integer(kind_counts), c(1, 15, 14, 12, 10, 3, 1, 1, 1, 6, 4, 6, 4, 1, 7))
+expect_true(all(nzchar(tidy$accession[tidy$record_kind == "rcv_assertion"])))
+expect_true(all(nzchar(tidy$accession[tidy$record_kind == "scv_assertion"])))
+expect_equal(
+  tidy$assembly[tidy$record_kind == "location"],
+  "GRCh38"
+)
+expect_equal(
+  tidy$gene_symbol[tidy$record_kind == "gene"],
+  "BRCA1"
+)
+tidy_types <- DBI::dbGetQuery(
+  con,
+  paste0(
+    "DESCRIBE SELECT * FROM read_parquet(",
+    DBI::dbQuoteString(con, tidy_parquet), ")"
+  )
+)$column_type
+expect_false(any(grepl("STRUCT|\\[\\]$", tidy_types)))
 expect_error(
   rclinvarbitration_export_clinvarbitration_parquet(
     con, tempfile(fileext = ".parquet"), "fixture-vcv",
-    schema = "enhanced", submitter_exclusions = "Example laboratory"
+    schema = "tidy", submitter_exclusions = "Example laboratory"
   ),
   "requires a named policy profile"
 )
-unlink(enhanced_parquet)
+unlink(tidy_parquet)
 
 blinded_parquet <- tempfile("clinvar-decisions-blinded-", fileext = ".parquet")
 submitters <- unique(scvs$submitter_name)
