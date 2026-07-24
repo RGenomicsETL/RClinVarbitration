@@ -90,16 +90,112 @@ rclinvarbitration_import_xml(
 
 The main query surfaces are:
 
-| Relation                                                      | Content                                                |
-|:--------------------------------------------------------------|:-------------------------------------------------------|
-| `clinvar_variants`, `clinvar_alleles`, `clinvar_locations`    | VCV records and assembly-specific alleles              |
-| `clinvar_rcv_assertions`, `clinvar_scv_assertions`            | disease aggregates and individual submissions          |
-| `clinvar_conditions`, `clinvar_observations`, `clinvar_text`  | attributable condition, observation, and text evidence |
-| `clinvar_disease_submissions`                                 | SCV evidence grouped by disease                        |
-| `clinvar_policy_decisions`, `clinvar_policy_allele_decisions` | disease- and allele-level arbitration                  |
-| `clinvar_gene_summaries`                                      | policy-versioned disease/classification counts by gene |
-| `clinvar_hpo_terms`, `clinvar_literature_links`               | normalized phenotype and literature links              |
-| `clinvar_semantic_documents`                                  | attributable text documents for retrieval workflows    |
+| Relation                                                      | Content                                                  |
+|:--------------------------------------------------------------|:---------------------------------------------------------|
+| `clinvar_variants`, `clinvar_alleles`, `clinvar_locations`    | VCV records and assembly-specific alleles                |
+| `clinvar_rcv_assertions`, `clinvar_scv_assertions`            | condition-specific aggregates and individual submissions |
+| `clinvar_conditions`, `clinvar_observations`, `clinvar_text`  | attributable condition, observation, and text evidence   |
+| `clinvar_disease_submissions`                                 | SCV evidence grouped by disease                          |
+| `clinvar_policy_decisions`, `clinvar_policy_allele_decisions` | disease- and allele-level arbitration                    |
+| `clinvar_gene_summaries`                                      | policy-versioned disease/classification counts by gene   |
+| `clinvar_gene_disease_summaries`                              | descriptive ClinVar evidence strata per gene and disease |
+| `clinvar_hpo_terms`, `clinvar_literature_links`               | normalized phenotype and literature links                |
+| `clinvar_semantic_documents`                                  | attributable text documents for retrieval workflows      |
+
+## DuckLake publication and release changes
+
+The enhanced Parquet export is the canonical case-independent ClinVar
+evidence relation. It has one disease-specific decision per assembly
+locus and retains the policy identity, stable source keys, decision
+counts, a complete-row `content_sha256`, and nested SCV, RCV, and gene
+receipts:
+
+``` r
+enhanced_path <- tempfile(fileext = ".parquet")
+release_receipt <- rclinvarbitration_export_clinvarbitration_parquet(
+  full_con,
+  enhanced_path,
+  release_id = "ncbi-vcv-2026-07",
+  assembly = "GRCh38",
+  schema = "enhanced"
+)
+```
+
+Publish that relation into a persistent DuckLake table. One publication
+transaction becomes one DuckLake snapshot, and DuckLake’s data-change
+feed then returns the exact insert, delete, and update rows.
+RClinVarbitration does not implement a second snapshot or delta engine.
+
+The [RGenomicsETL `ducklake-r`
+fork](https://github.com/RGenomicsETL/ducklake-r) registers a whole
+Parquet batch atomically with `add_data_files(..., create = TRUE)`,
+without copying it or collecting it into R. A persistent staging table
+can then feed a key-based merge:
+
+``` r
+ducklake::attach_ducklake("clinvar_lake", lake_path = "clinvar-lake")
+lake_con <- ducklake::get_ducklake_connection()
+
+# One-time staging-table bootstrap from the first enhanced Parquet.
+ducklake::add_data_files(
+  "clinvar_incoming", enhanced_path, create = TRUE
+)
+
+# Publish the already registered first release. For later releases, put
+# ducklake::add_data_files("clinvar_incoming", next_path) at the start of
+# this transaction.
+ducklake::with_transaction({
+  DBI::dbExecute(
+    lake_con,
+    "CREATE TABLE IF NOT EXISTS clinvar_decisions AS
+       SELECT * FROM clinvar_incoming LIMIT 0"
+  )
+  DBI::dbExecute(
+    lake_con,
+    "DELETE FROM clinvar_decisions AS current
+       WHERE NOT EXISTS (
+         SELECT 1 FROM clinvar_incoming AS incoming
+         WHERE incoming.record_key = current.record_key
+       )"
+  )
+  DBI::dbExecute(
+    lake_con,
+    "MERGE INTO clinvar_decisions AS current
+       USING clinvar_incoming AS incoming USING (record_key)
+       WHEN MATCHED AND
+         current.content_sha256 IS DISTINCT FROM incoming.content_sha256
+         THEN UPDATE
+       WHEN NOT MATCHED THEN INSERT"
+  )
+  DBI::dbExecute(lake_con, "DELETE FROM clinvar_incoming")
+}, author = "RClinVarbitration",
+   commit_message = "Publish ncbi-vcv-2026-07 default policy",
+   commit_extra_info = paste(
+     "release_id=ncbi-vcv-2026-07",
+     paste0("policy_version=", release_receipt$policy_version),
+     sep = ";"
+   ))
+
+snapshots <- ducklake::list_table_snapshots()
+changes <- ducklake::get_table_changes(
+  "clinvar_decisions",
+  start = publication_snapshot_id,
+  end = publication_snapshot_id
+)
+```
+
+`changes` contains `insert`, `delete`, `update_preimage`, and
+`update_postimage` rows. The nested `scv_submissions` and allele-level
+`rcv_aggregates` retain the source assertions behind a decision; each
+RCV item keeps its own disease key, so no SCV/RCV disease equivalence is
+invented. A release comparison must hold the policy profile fixed; a
+submitter-policy experiment must hold the source snapshot fixed.
+
+`clinvar_gene_disease_summaries` stratifies the retained ClinVar
+evidence as expert-reviewed pathogenic, multi-submitter pathogenic,
+reported pathogenic, conflicting, uncertain, or benign-only. These are
+useful retrieval and reanalysis strata, not claims that ClinVar alone
+has established gene–disease validity.
 
 Read the [arbitration
 algorithm](https://rgenomicsetl.github.io/RClinVarbitration/articles/arbitration-algorithm.html),

@@ -2,7 +2,7 @@
 % Please edit documentation in R/export.R
 \name{rclinvarbitration_export_clinvarbitration_parquet}
 \alias{rclinvarbitration_export_clinvarbitration_parquet}
-\title{Export an allele-level ClinVarbitration-compatible Parquet file}
+\title{Export ClinVarbitration decisions to Parquet}
 \usage{
 rclinvarbitration_export_clinvarbitration_parquet(
   con,
@@ -10,7 +10,8 @@ rclinvarbitration_export_clinvarbitration_parquet(
   release_id,
   assembly = c("GRCh38", "GRCh37"),
   profile_id = "default",
-  submitter_exclusions = character()
+  submitter_exclusions = character(),
+  schema = c("compatibility", "enhanced")
 )
 }
 \arguments{
@@ -29,20 +30,38 @@ rclinvarbitration_export_clinvarbitration_parquet(
 export. Matching is case-insensitive and ignores surrounding whitespace.
 These exclusions are combined with any exclusions already stored for
 \code{profile_id}; imported source submissions are not deleted.}
+
+\item{schema}{Output schema: the upstream-compatible seven-column relation
+or the source-rich disease-decision relation.}
 }
 \value{
 A named list describing the written Parquet file, invisibly.
 }
 \description{
-Writes the seven columns in Centre for Population Genomics ClinVarbitration's
-\code{clinvar_decisions.tsv}: \code{contig}, \code{position}, \code{reference}, \code{alternate},
-\code{clinical_significance}, \code{gold_stars}, and \code{allele_id}. The source is the
-package's allele-level policy view, not the disease-level decision view, so
-each output row is usable as a locus/alleles annotation record. Both GRCh37
-and GRCh38 are supported. The output retains every qualifying source locus,
-including distinct X/Y locations for one AlleleID.
+\code{schema = "compatibility"} writes the seven columns in Centre for Population
+Genomics ClinVarbitration's \code{clinvar_decisions.tsv}: \code{contig}, \code{position},
+\code{reference}, \code{alternate}, \code{clinical_significance}, \code{gold_stars}, and
+\code{allele_id}.
 }
 \details{
+\code{schema = "enhanced"} writes one disease-specific decision per assembly
+locus and allele. It retains a stable \code{record_key}, a \code{content_sha256} over
+the complete row, policy identity, VCV and disease identifiers, decision
+counts and dates, and deterministically ordered nested SCV, RCV, and gene
+receipts. The source release receipt is returned by the function rather than
+copied into every row. A DuckLake merge can therefore skip rows whose
+content receipt is unchanged across source snapshots.
+
+SCV receipts are attached to their exact disease decision. RCV receipts are
+allele-level context and retain their own disease keys inside each nested
+item; the exporter does not claim that an RCV disease key is equivalent to
+an SCV key merely because both occur under the same allele.
+
+The compatibility source is the allele-level policy view. The enhanced
+source is the disease-level decision view. Both GRCh37 and GRCh38 are
+supported, and both retain every qualifying source locus, including distinct
+X/Y locations for one AlleleID.
+
 The file is schema-compatible with the upstream TSV/Hail decision resource,
 but is not claimed to be byte-for-byte equivalent: this package derives
 submissions and locations from VCV XML, whereas upstream uses ClinVar's

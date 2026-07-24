@@ -248,6 +248,42 @@ expect_error(
 )
 unlink(parquet)
 
+enhanced_parquet <- tempfile(
+  "clinvar-decisions-enhanced-", fileext = ".parquet"
+)
+enhanced_export <- rclinvarbitration_export_clinvarbitration_parquet(
+  con, enhanced_parquet, release_id = "fixture-vcv", assembly = "GRCh38",
+  schema = "enhanced"
+)
+expect_equal(enhanced_export$schema, "enhanced")
+expect_equal(enhanced_export$release_receipt$release_id, "fixture-vcv")
+enhanced <- DBI::dbGetQuery(
+  con,
+  paste0(
+    "SELECT record_key, vcv_accession, disease_key, clinical_significance, ",
+    "content_sha256, ",
+    "list_count(scv_submissions) AS scv_count, ",
+    "list_count(rcv_aggregates) AS rcv_count, ",
+    "list_count(genes) AS gene_count FROM read_parquet(",
+    DBI::dbQuoteString(con, enhanced_parquet), ")"
+  )
+)
+expect_equal(nrow(enhanced), enhanced_export$rows)
+expect_true(all(nzchar(enhanced$record_key)))
+expect_true(all(nchar(enhanced$content_sha256) == 64L))
+expect_true(all(enhanced$vcv_accession == "VCV000091629"))
+expect_true(all(enhanced$scv_count >= 1L))
+expect_true(all(enhanced$rcv_count == 4L))
+expect_true(all(enhanced$gene_count >= 1L))
+expect_error(
+  rclinvarbitration_export_clinvarbitration_parquet(
+    con, tempfile(fileext = ".parquet"), "fixture-vcv",
+    schema = "enhanced", submitter_exclusions = "Example laboratory"
+  ),
+  "requires a named policy profile"
+)
+unlink(enhanced_parquet)
+
 blinded_parquet <- tempfile("clinvar-decisions-blinded-", fileext = ".parquet")
 submitters <- unique(scvs$submitter_name)
 policy_version_sql <- DBI::dbQuoteString(con, rclinvarbitration_policy_version())

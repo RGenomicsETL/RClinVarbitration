@@ -138,14 +138,17 @@ and policy profile so reviewers can inspect why a gene was proposed.
 ## Publishing releases to DuckLake
 
 DuckLake is useful when multiple applications need immutable source releases,
-Parquet-backed tables, snapshot history, and release-to-release deltas. The
-recommended boundary is:
+Parquet-backed tables, snapshot history, and release-to-release comparisons.
+The recommended boundary is:
 
 1. download and checksum the source;
 2. import into a local file-backed DuckDB staging database;
 3. validate row counts, release metadata, and policy outputs;
-4. append typed source tables to DuckLake in one publication transaction; and
-5. materialize derived policy tables separately with policy/profile identity.
+4. export the source-rich disease-decision Parquet relation;
+5. register it into a DuckLake staging table without copying;
+6. merge changed keys into the persistent decision table in one publication
+   transaction; and
+7. retain the policy/profile and source receipt in snapshot metadata.
 
 Do not use a DuckLake snapshot number as a replacement for ClinVar's own source
 release. Record both. A DuckLake snapshot says when the lake changed; the
@@ -169,43 +172,92 @@ attach_sql <- paste(
   ")"
 )
 DBI::dbExecute(con, attach_sql)
+DBI::dbExecute(con, "USE clinvar_lake")
 ```
 
-For the first publication, create a typed DuckLake table from a validated
-source relation. Later releases append rows with a new immutable release ID.
-In production, execute the complete table set in one checked transaction and
-record its DuckLake snapshot and transform receipt.
+The enhanced exporter is the package boundary:
 
-```sql
-BEGIN TRANSACTION;
-
-CREATE TABLE clinvar_lake.main.clinvar_releases AS
-SELECT * FROM main.clinvar_releases
-WHERE release_id = 'ncbi-vcv-2026-07-02';
-
-CREATE TABLE clinvar_lake.main.clinvar_variants AS
-SELECT * FROM main.clinvar_variants
-WHERE release_id = 'ncbi-vcv-2026-07-02';
-
-CREATE TABLE clinvar_lake.main.clinvar_policy_decisions AS
-SELECT * FROM main.clinvar_policy_decisions
-WHERE release_id = 'ncbi-vcv-2026-07-02'
-  AND policy_version = 'cpg-clinvarbitration-2.2.11'
-  AND profile_id = 'default';
-
-COMMIT;
+```r
+enhanced_path <- tempfile(fileext = ".parquet")
+receipt <- rclinvarbitration_export_clinvarbitration_parquet(
+  con,
+  enhanced_path,
+  release_id = "ncbi-vcv-2026-07-02",
+  assembly = "GRCh38",
+  profile_id = "default",
+  schema = "enhanced"
+)
 ```
 
-Source and derived relations should not be conflated. A new arbitration profile
-can produce a new derived snapshot without pretending the NCBI source changed.
-Conversely, a new ClinVar release can invalidate only affected downstream
-materializations.
+It writes one disease-specific decision per assembly locus with a stable
+`record_key`, a complete-row `content_sha256`, policy identity, decision
+counts, and nested SCV, RCV, and gene receipts. SCVs are attached to the exact
+disease decision. RCVs remain allele-level receipts and carry their own
+disease keys; their presence does not assert that an SCV condition and an RCV
+condition are equivalent. The ClinVar release receipt is returned separately
+and belongs in the DuckLake snapshot metadata.
 
-A future `clinDuckLake` adapter can own this publication transaction, table
-manifest, snapshot receipt, and release-delta API. It should call
-RClinVarbitration for source parsing and policy views rather than implementing a
-second ClinVar parser or arbitration kernel. RClinVarbitration should not take a
-hard DuckLake dependency merely to support local single-release analysis.
+The [RGenomicsETL `ducklake-r`
+fork](https://github.com/RGenomicsETL/ducklake-r) provides atomic Parquet
+registration. `add_data_files(..., create = TRUE)` creates the staging schema
+and transfers the existing Parquet file to DuckLake without copying it or
+collecting rows into R:
+
+```r
+ducklake::set_ducklake_connection(con)
+ducklake::add_data_files(
+  "clinvar_incoming", enhanced_path, create = TRUE
+)
+
+ducklake::with_transaction({
+  DBI::dbExecute(
+    con,
+    "CREATE TABLE IF NOT EXISTS clinvar_decisions AS
+       SELECT * FROM clinvar_incoming LIMIT 0"
+  )
+  DBI::dbExecute(
+    con,
+    "DELETE FROM clinvar_decisions AS current
+       WHERE NOT EXISTS (
+         SELECT 1 FROM clinvar_incoming AS incoming
+         WHERE incoming.record_key = current.record_key
+       )"
+  )
+  DBI::dbExecute(
+    con,
+    "MERGE INTO clinvar_decisions AS current
+       USING clinvar_incoming AS incoming USING (record_key)
+       WHEN MATCHED AND
+         current.content_sha256 IS DISTINCT FROM incoming.content_sha256
+         THEN UPDATE
+       WHEN NOT MATCHED THEN INSERT"
+  )
+  DBI::dbExecute(con, "DELETE FROM clinvar_incoming")
+}, author = "RClinVarbitration",
+   commit_message = "Publish ncbi-vcv-2026-07-02 default policy",
+   commit_extra_info = paste(
+     "release_id=ncbi-vcv-2026-07-02",
+     paste0("policy_version=", receipt$policy_version),
+     sep = ";"
+   ))
+```
+
+The first `add_data_files(..., create = TRUE)` is a one-time staging-schema
+snapshot. For later releases, call `add_data_files("clinvar_incoming",
+next_path)` at the start of the publication transaction. The delete and merge
+leave byte-identical rows untouched and clear staging after use.
+
+Each committed publication is one DuckLake snapshot.
+`get_table_changes("clinvar_decisions", snapshot_id, snapshot_id)` returns its
+exact `insert`, `delete`, `update_preimage`, and `update_postimage` rows.
+Inspect the nested SCV and RCV receipts to explain a change. This is DuckLake's
+native change feed, not a package-local delta API.
+
+Source and derived identities should not be conflated. A new arbitration
+profile can produce a new snapshot without pretending the NCBI source changed.
+A release comparison holds the profile fixed; a policy experiment holds the
+source snapshot fixed. RClinVarbitration therefore has no hard DuckLake
+dependency for local single-release analysis.
 
 ## VariantStory boundary
 
