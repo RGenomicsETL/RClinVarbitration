@@ -42,17 +42,16 @@ rclinvarbitration_compatibility_select_sql <- function(
     "AND l.allele_id IS NOT DISTINCT FROM p.allele_id ",
     "WHERE p.release_id = ", release_sql, " AND p.profile_id = ", profile_sql,
     " AND l.assembly = ", assembly_sql,
-    " AND l.contig IN ('chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', ",
-    "'chr7', 'chr8', 'chr9', 'chr10', 'chr11', 'chr12', 'chr13', 'chr14', ",
-    "'chr15', 'chr16', 'chr17', 'chr18', 'chr19', 'chr20', 'chr21', 'chr22', ",
-    "'chrX', 'chrY', 'chrM', '1', '2', '3', '4', '5', '6', '7', '8', '9', ",
-    "'10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', ",
-    "'21', '22', 'X', 'Y', 'M') ",
     "AND lower(l.reference) <> 'na' AND lower(l.alternate) <> 'na' ",
     "AND l.reference <> l.alternate ",
     "AND length(l.reference) + length(l.alternate) <= 40 ",
     "AND regexp_full_match(l.reference, '^[ACGTN]+$') ",
-    "AND regexp_full_match(l.alternate, '^[ACGTN]+$')"
+    "AND regexp_full_match(l.alternate, '^[ACGTN]+$') ",
+    "QUALIFY CASE WHEN l.sequence_accession IS NULL OR ",
+    "starts_with(l.sequence_accession, 'NC_') THEN 0 ELSE 1 END = ",
+    "min(CASE WHEN l.sequence_accession IS NULL OR ",
+    "starts_with(l.sequence_accession, 'NC_') THEN 0 ELSE 1 END) OVER (",
+    "PARTITION BY l.release_id, l.allele_id, l.assembly)"
   )
 }
 
@@ -110,8 +109,9 @@ rclinvarbitration_export_tidy_parquet <- function(
 #'
 #' The compatibility source is the allele-level policy view joined through
 #' `clinvar_vcf`. Both GRCh37 and GRCh38 are supported, including distinct X/Y
-#' locations for one AlleleID. Alternate placements retain their sequence
-#' accession and are not mislabeled as primary-chromosome VCF records.
+#' locations for one AlleleID. Primary `NC_` placements take precedence when
+#' present. An allele available only on alternate placements retains its exact
+#' sequence accession and is not mislabeled as a primary-chromosome VCF record.
 #'
 #' The file is schema-compatible with the upstream TSV/Hail decision resource,
 #' but is not claimed to be byte-for-byte equivalent: this package derives

@@ -97,19 +97,33 @@ DBI::dbExecute(con, "
     ('flat-fixture', 'location', 'location|par-x', 13, 'location:par-x',
      'allele', 'allele:101', 'GRCh38', 'X', 'NC_000023.11', 10001, 'C', 'G'),
     ('flat-fixture', 'location', 'location|par-y', 14, 'location:par-y',
-     'allele', 'allele:101', 'GRCh38', 'Y', 'NC_000024.10', 10001, 'C', 'G')
+     'allele', 'allele:101', 'GRCh38', 'Y', 'NC_000024.10', 10001, 'C', 'G'),
+    ('flat-fixture', 'location', 'location|alt-only', 15, 'location:alt-only',
+     'allele', 'allele:102', 'GRCh38', '2', 'NT_187362.1', 202, 'G', 'C')
+")
+DBI::dbExecute(con, "
+  INSERT INTO clinvar (
+    release_id, record_kind, record_key, record_ordinal, entity_id,
+    parent_type, parent_id, variation_id, allele_id, classification,
+    gold_stars, profile_id
+  ) VALUES
+    ('flat-fixture', 'decision', 'decision|alt-only', 16,
+     'decision:alt-only', 'allele', 'allele:102', 202, 102,
+     'Uncertain Significance', 0, 'default')
 ")
 placement_names <- DBI::dbGetQuery(con, "
   SELECT coordinate_key, chromosome, sequence_accession, contig
   FROM clinvar_vcf
-  WHERE coordinate_key IN ('location|alt', 'location|par-x', 'location|par-y')
+  WHERE coordinate_key IN (
+    'location|alt', 'location|alt-only', 'location|par-x', 'location|par-y'
+  )
   ORDER BY coordinate_key
 ")
 expect_equal(
   placement_names$contig,
-  c("NT_187361.1", "chrX", "chrY")
+  c("NT_187361.1", "NT_187362.1", "chrX", "chrY")
 )
-expect_equal(placement_names$chromosome, c("1", "X", "Y"))
+expect_equal(placement_names$chromosome, c("1", "2", "X", "Y"))
 compatibility_path <- tempfile(
   "rclinvarbitration-compatibility-", fileext = ".parquet"
 )
@@ -123,7 +137,10 @@ compatibility_contigs <- DBI::dbGetQuery(
     DBI::dbQuoteString(con, compatibility_path), ") ORDER BY contig"
   )
 )$contig
-expect_equal(compatibility_contigs, c("chr1", "chrX", "chrY"))
+expect_equal(
+  compatibility_contigs,
+  c("NT_187362.1", "chr1", "chrX", "chrY")
+)
 unlink(compatibility_path)
 tidy_export_path <- tempfile(
   "rclinvarbitration-tidy-", fileext = ".parquet"
@@ -141,7 +158,7 @@ expect_equal(
       ") WHERE record_kind = 'decision'"
     )
   )$n,
-  1
+  2
 )
 unlink(tidy_export_path)
 parquet_columns <- DBI::dbGetQuery(

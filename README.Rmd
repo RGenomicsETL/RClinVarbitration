@@ -118,13 +118,69 @@ remain separate rows. Raw `location` rows are still retained when ClinVar lacks
 a complete VCF tuple, as occurs for some structural variants; those rows are
 deliberately absent from `clinvar_vcf`.
 
-On the measured March 2026 flat reports, the table contains 38,596,056 unique
-facts in a 4.98 GiB DuckDB file. It retains 4,410,536 GRCh38 and 4,463,601
-GRCh37 source locations; 4,389,459 and 4,389,810 respectively have usable VCF
-tuples. The full XML source is larger—109,372,736 unique stored facts—because
-it also carries observations, citations, names, cross-references, attributes,
-and text. These row counts are ordinary analytical-table scale for DuckDB; the
-important contract is preserved assembly and accession identity.
+Measured release summaries are rendered from their committed receipts:
+
+```{r benchmark-summary, echo=FALSE}
+receipt_path <- function(name) {
+  candidates <- c(
+    file.path("inst", "benchmarks", name),
+    file.path("..", "inst", "benchmarks", name),
+    system.file("benchmarks", name, package = "RClinVarbitration")
+  )
+  candidates[file.exists(candidates)][1L]
+}
+read_receipt <- function(name) as.list(read.dcf(receipt_path(name))[1L, ])
+format_count <- function(value) {
+  format(as.numeric(value), big.mark = ",", scientific = FALSE, trim = TRUE)
+}
+format_gib <- function(value) sprintf("%.2f GiB", as.numeric(value) / 1024^3)
+
+flat_receipt <- read_receipt("full-flat-release-2026-03.dcf")
+xml_receipt <- read_receipt("full-release-2026-07-02.dcf")
+benchmark_summary <- data.frame(
+  Source = c(
+    "[March 2026 flat](inst/benchmarks/full-flat-release-2026-03.dcf)",
+    "[2 July 2026 XML](inst/benchmarks/full-release-2026-07-02.dcf)"
+  ),
+  `Stored facts` = c(
+    format_count(flat_receipt$total_rows),
+    format_count(xml_receipt$total_rows)
+  ),
+  DuckDB = c(
+    format_gib(flat_receipt$database_bytes),
+    format_gib(xml_receipt$database_bytes)
+  ),
+  `GRCh38 raw / VCF` = c(
+    paste(
+      format_count(flat_receipt$raw_location_rows_grch38),
+      format_count(flat_receipt$vcf_rows_grch38),
+      sep = " / "
+    ),
+    paste(
+      format_count(xml_receipt$raw_location_rows_grch38),
+      format_count(xml_receipt$vcf_rows_grch38),
+      sep = " / "
+    )
+  ),
+  `GRCh37 raw / VCF` = c(
+    paste(
+      format_count(flat_receipt$raw_location_rows_grch37),
+      format_count(flat_receipt$vcf_rows_grch37),
+      sep = " / "
+    ),
+    paste(
+      format_count(xml_receipt$raw_location_rows_grch37),
+      format_count(xml_receipt$vcf_rows_grch37),
+      sep = " / "
+    )
+  ),
+  check.names = FALSE
+)
+knitr::kable(benchmark_summary, align = c("l", "r", "r", "r", "r"))
+```
+
+XML adds observations, citations, names, cross-references, attributes, and
+text. Both paths preserve assembly and sequence-accession identity.
 
 ```{r coordinate-view}
 dbGetQuery(con, "

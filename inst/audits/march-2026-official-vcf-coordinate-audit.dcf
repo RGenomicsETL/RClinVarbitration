@@ -1,0 +1,33 @@
+Audit: March 2026 official ClinVar VCF coordinate comparison
+Audit-Date-UTC: 2026-07-25
+Flat-Source-Date: 2026-03-05
+Flat-Variant-Source: variant_summary_2026-03.txt.gz
+Flat-Variant-SHA256: 0d6c0c8760529befdfc1fbfcfa90cfb0aa11bfc5fe72176ac9bc9820884f710e
+Upstream-Repository: https://github.com/populationgenomics/ClinvArbitration
+Upstream-Commit: 658b9f241eb2d43aa11214b153b19c1e18a16337
+Official-VCF-Date: 2026-03-09
+Official-VCF-URL: https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/archive_2.0/2026/clinvar_20260309.vcf.gz
+Official-VCF-Bytes: 190285755
+Official-VCF-MD5: 308d66b5fe172104298081c2fd555d8e
+Official-VCF-SHA256: e775b80f79ac4946a3a6666201a5b0cd44d789c848e355321dfd4b001804cef8
+Comparison-Key: AlleleID
+Disputed-Upstream-Rows: 40
+Official-VCF-Matched-AlleleIDs: 40
+Official-VCF-Exact-POS-REF-ALT-Matches: 40
+Canonical-Exact-CHROM-POS-REF-ALT-VariationID-AlleleID-Matches: 40
+Upstream-CHROM-Mismatches: 40
+Public-Compatibility-Rows: 4125389
+Public-Compatibility-Alternate-Accession-Rows: 40
+Rows-NT_187633.1: 18
+Rows-NT_187661.1: 11
+Rows-NT_187693.1: 10
+Rows-NW_009646201.1: 1
+History-Search: No public issue, pull request, commit message, or review comment
+ documents a choice to discard ChromosomeAccession. Commit
+ 4ea4433c09755f55b952d8f7fcb2093bae0dedbb introduced the Chromosome-field
+ projection; pull request 3 later added a standard-chromosome filter for
+ ChrUn, and pull request 4 addressed X/Y key collisions.
+Conclusion: The official ClinVar VCF retains alternate sequence accessions for
+ all 40 rows. RClinVarbitration follows the official VCF. The pinned upstream
+ seven-column oracle remains intentionally available for bug-for-bug policy
+ conformance, but its primary-looking CHROM values are not coordinate-safe.

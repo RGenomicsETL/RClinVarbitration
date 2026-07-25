@@ -127,14 +127,15 @@ accession as `contig`, and X/Y PAR placements remain separate rows. Raw
 tuple, as occurs for some structural variants; those rows are
 deliberately absent from `clinvar_vcf`.
 
-On the measured March 2026 flat reports, the table contains 38,596,056
-unique facts in a 4.98 GiB DuckDB file. It retains 4,410,536 GRCh38 and
-4,463,601 GRCh37 source locations; 4,389,459 and 4,389,810 respectively
-have usable VCF tuples. The full XML source is larger—109,372,736 unique
-stored facts—because it also carries observations, citations, names,
-cross-references, attributes, and text. These row counts are ordinary
-analytical-table scale for DuckDB; the important contract is preserved
-assembly and accession identity.
+Measured release summaries are rendered from their committed receipts:
+
+| Source                                                           | Stored facts |   DuckDB |      GRCh38 raw / VCF |      GRCh37 raw / VCF |
+|:-----------------------------------------------------------------|-------------:|---------:|----------------------:|----------------------:|
+| [March 2026 flat](inst/benchmarks/full-flat-release-2026-03.dcf) |   38,596,056 | 4.98 GiB | 4,410,536 / 4,389,459 | 4,463,601 / 4,389,810 |
+| [2 July 2026 XML](inst/benchmarks/full-release-2026-07-02.dcf)   |  109,372,736 | 8.73 GiB | 4,465,523 / 4,444,013 | 4,518,795 / 4,444,344 |
+
+XML adds observations, citations, names, cross-references, attributes,
+and text. Both paths preserve assembly and sequence-accession identity.
 
 ``` r
 dbGetQuery(con, "

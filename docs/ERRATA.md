@@ -21,18 +21,19 @@ classifications.
 
 ## Deviations from upstream ClinVarbitration
 
-| Area                         | Upstream 2.2.11                                                               | RClinVarbitration                                                                          | Status and consequence                                                                                                         |
-|:-----------------------------|:------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------|
-| Normal input                 | NCBI `submission_summary` plus `variant_summary`                              | the same flat reports; optional complete VCV XML/XML.GZ                                    | Flat import is the compact default. XML feeds the same table with richer attributable evidence but different entity semantics. |
-| Runtime                      | Python, Pandas, Hail, Spark, Nextflow, bcftools                               | R, DuckDB SQL, package-owned C extension                                                   | Intentional implementation change; semantic parity is tested separately from performance.                                      |
-| Decision scope               | allele/VariationID                                                            | disease plus allele views                                                                  | Intentional extension. Disease grouping can produce multiple decisions for one allele.                                         |
-| SCV versions                 | flat rows; no XML assertion identity step                                     | highest SCV version per assertion identity and decision group                              | Intentional XML adaptation; can change counts where versioned rows are exposed.                                                |
-| Qualified Illumina exclusion | declared, but the pinned Python inner-loop `continue` does not remove the row | removes benign evidence from normalized submitter `illumina laboratory services; illumina` | Intentional correction to documented policy, not bug-for-bug compatibility.                                                    |
-| Submitter exclusion matching | lower-cased flat submitter names and CLI/config values                        | trimmed, case-insensitive names; profile-wide or classification-qualified rules            | Intentional extension. Imported evidence remains present.                                                                      |
-| Disease identity             | absent from the decision key                                                  | canonical identifier, trait-set, name, then package entity fallback                        | Intentional extension with known grouping heuristics; see open limitations.                                                    |
-| Outputs                      | TSV, Hail Table, VCF, PM5 relation                                            | one scalar DuckDB table, SQL views, and Parquet exports                                    | Intentional. Hail, VCF file rendering, VEP, and PM5 generation are out of scope.                                               |
-| Star and 60/20 rules         | pinned Python implementation                                                  | equivalent SQL rules                                                                       | Expected parity when input rows, order, grouping, and exclusions are identical.                                                |
-| Strong-review choice         | first strong row encountered                                                  | `min_by` classification in retained source order                                           | Expected parity. It does not impose practice-guideline priority over an earlier expert-panel row.                              |
+| Area                            | Upstream 2.2.11                                                               | RClinVarbitration                                                                          | Status and consequence                                                                                                         |
+|:--------------------------------|:------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------|
+| Normal input                    | NCBI `submission_summary` plus `variant_summary`                              | the same flat reports; optional complete VCV XML/XML.GZ                                    | Flat import is the compact default. XML feeds the same table with richer attributable evidence but different entity semantics. |
+| Runtime                         | Python, Pandas, Hail, Spark, Nextflow, bcftools                               | R, DuckDB SQL, package-owned C extension                                                   | Intentional implementation change; semantic parity is tested separately from performance.                                      |
+| Decision scope                  | allele/VariationID                                                            | disease plus allele views                                                                  | Intentional extension. Disease grouping can produce multiple decisions for one allele.                                         |
+| SCV versions                    | flat rows; no XML assertion identity step                                     | highest SCV version per assertion identity and decision group                              | Intentional XML adaptation; can change counts where versioned rows are exposed.                                                |
+| Qualified Illumina exclusion    | declared, but the pinned Python inner-loop `continue` does not remove the row | removes benign evidence from normalized submitter `illumina laboratory services; illumina` | Intentional correction to documented policy, not bug-for-bug compatibility.                                                    |
+| Submitter exclusion matching    | lower-cased flat submitter names and CLI/config values                        | trimmed, case-insensitive names; profile-wide or classification-qualified rules            | Intentional extension. Imported evidence remains present.                                                                      |
+| Disease identity                | absent from the decision key                                                  | canonical identifier, trait-set, name, then package entity fallback                        | Intentional extension with known grouping heuristics; see open limitations.                                                    |
+| Outputs                         | TSV, Hail Table, VCF, PM5 relation                                            | one scalar DuckDB table, SQL views, and Parquet exports                                    | Intentional. Hail, VCF file rendering, VEP, and PM5 generation are out of scope.                                               |
+| Alternate-accession coordinates | builds `CHROM` from the flat report’s `Chromosome` field                      | uses `ChromosomeAccession` for non-primary placements, matching the official ClinVar VCF   | Intentional correction. Upstream can label an alternate-locus position as if it were on a primary chromosome.                  |
+| Star and 60/20 rules            | pinned Python implementation                                                  | equivalent SQL rules                                                                       | Expected parity when input rows, order, grouping, and exclusions are identical.                                                |
+| Strong-review choice            | first strong row encountered                                                  | `min_by` classification in retained source order                                           | Expected parity. It does not impose practice-guideline priority over an earlier expert-panel row.                              |
 
 `rclinvarbitration_import_flat()` is the ordinary compact release
 import. `rclinvarbitration_reproduce_clinvarbitration_parquet()` remains
@@ -88,6 +89,36 @@ placements retain their accession as `contig`. X and Y placements for
 the same AlleleID remain separate rows, including pseudoautosomal
 placements. Consumers must choose the desired assembly and placement
 rather than collapsing on AlleleID alone.
+
+The seven-column decision export prefers primary `NC_` placements when
+they exist. An allele available only on an alternate placement keeps
+that accession. The canonical location rows and `clinvar_vcf` retain
+every source placement regardless of this export selection.
+
+The March 2026 flat report exposed 40 upstream decision rows for which
+this distinction changes `CHROM`. The pinned upstream implementation
+emitted `chr17`, `chr19`, `chr22`, or `chr9`; NCBI’s 9 March 2026 GRCh38
+VCF emitted the same 40 AlleleIDs and identical POS/REF/ALT values on
+`NT_187661.1`, `NT_187693.1`, `NT_187633.1`, or `NW_009646201.1`.
+`clinvar_vcf` and the seven-column compatibility export follow the
+official VCF accessions. The direct upstream reproducer remains
+available when deliberate bug-for-bug comparison is required. The
+[coordinate
+audit](../inst/audits/march-2026-official-vcf-coordinate-audit.dcf)
+records the official VCF URL, digest, release dates, and comparison
+counts.
+
+No public upstream rationale for discarding `ChromosomeAccession` was
+found. The choice entered in the [starter
+commit](https://github.com/populationgenomics/ClinvArbitration/commit/4ea4433c09755f55b952d8f7fcb2093bae0dedbb).
+[PR 3](https://github.com/populationgenomics/ClinvArbitration/pull/3)
+later restricted the derived chromosome names after a `ChrUn` row broke
+the parser, and [PR
+4](https://github.com/populationgenomics/ClinvArbitration/pull/4)
+prevented X/Y records from overwriting each other. Neither change reads
+or discusses `ChromosomeAccession`; no public issue, pull request,
+commit message, or review comment documents an alternate-locus
+coordinate policy.
 
 ### Package-generated entity identifiers
 

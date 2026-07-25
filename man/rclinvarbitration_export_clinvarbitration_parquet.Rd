@@ -53,8 +53,9 @@ in the release receipt rather than copied into every Parquet row.
 
 The compatibility source is the allele-level policy view joined through
 \code{clinvar_vcf}. Both GRCh37 and GRCh38 are supported, including distinct X/Y
-locations for one AlleleID. Alternate placements retain their sequence
-accession and are not mislabeled as primary-chromosome VCF records.
+locations for one AlleleID. Primary \code{NC_} placements take precedence when
+present. An allele available only on alternate placements retains its exact
+sequence accession and is not mislabeled as a primary-chromosome VCF record.
 
 The file is schema-compatible with the upstream TSV/Hail decision resource,
 but is not claimed to be byte-for-byte equivalent: this package derives

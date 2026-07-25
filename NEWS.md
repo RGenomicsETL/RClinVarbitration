@@ -20,6 +20,12 @@
   Allele-level decisions and allele-gene facts deduplicate at their semantic
   keys even when one allele has multiple placements or a source gene list
   repeats a token.
+- Include alternate-accession decisions in the seven-column compatibility
+  export using their official ClinVar VCF `CHROM`. A complete March 2026 audit
+  found 40 rows for which pinned upstream ClinVarbitration relabels an
+  alternate-locus position as `chr17`, `chr19`, `chr22`, or `chr9`; NCBI's
+  archived GRCh38 VCF and `clinvar_vcf` agree exactly on accession,
+  POS/REF/ALT, VariationID, and AlleleID.
 - Add `rclinvarbitration_publish_ducklake()` as the single key-based
   publication path for tidy ClinVar exports. It registers Parquet without
   collecting rows in R, leaves unchanged records untouched, publishes inserts,

@@ -146,43 +146,128 @@ separately. The committed receipts are
 `inst/benchmarks/full-flat-release-2026-03.dcf` and
 `inst/benchmarks/full-release-2026-07-02.dcf`.
 
-| Measurement | March 2026 flat reports | 2 July 2026 VCV XML |
-|:--|--:|--:|
-| Compressed source | 807,089,080 bytes | 5,824,540,370 bytes |
-| Import wall time | 220.279 sec | 1,712.347 sec |
-| Unique stored facts | 38,596,056 | 109,372,736 |
-| Durable DuckDB file | 5,348,274,176 bytes | 9,378,738,176 bytes |
-| Bytes per stored fact | 138.57 | 85.75 |
-| Peak process RSS | 10,695,620 KiB | 10,593,308 KiB |
-| GRCh38 raw / VCF locations | 4,410,536 / 4,389,459 | 4,465,523 / 4,444,013 |
-| GRCh37 raw / VCF locations | 4,463,601 / 4,389,810 | 4,518,795 / 4,444,344 |
-| Duplicate `record_key` values | 0 | 0 |
-| Nested durable columns | 0 | 0 |
+```{r full-release-receipts, echo=FALSE}
+receipt_path <- function(name) {
+  candidates <- c(
+    file.path("inst", "benchmarks", name),
+    file.path("..", "inst", "benchmarks", name),
+    system.file("benchmarks", name, package = "RClinVarbitration")
+  )
+  candidates[file.exists(candidates)][1L]
+}
+read_receipt <- function(name) as.list(read.dcf(receipt_path(name))[1L, ])
+format_count <- function(value) {
+  format(as.numeric(value), big.mark = ",", scientific = FALSE, trim = TRUE)
+}
+format_decimal <- function(value, digits) {
+  formatC(as.numeric(value), format = "f", digits = digits, big.mark = ",")
+}
+flat_receipt <- read_receipt("full-flat-release-2026-03.dcf")
+xml_receipt <- read_receipt("full-release-2026-07-02.dcf")
+receipt_value <- function(receipt, field, formatter = format_count) {
+  formatter(receipt[[field]])
+}
+receipt_pair <- function(receipt, left, right) {
+  paste(
+    receipt_value(receipt, left),
+    receipt_value(receipt, right),
+    sep = " / "
+  )
+}
+benchmark_summary <- data.frame(
+  Measurement = c(
+    "Compressed source",
+    "Import wall time",
+    "Unique stored facts",
+    "Durable DuckDB file",
+    "Bytes per stored fact",
+    "Peak process RSS",
+    "GRCh38 raw / VCF locations",
+    "GRCh37 raw / VCF locations",
+    "Duplicate `record_key` values",
+    "Nested durable columns"
+  ),
+  `March 2026 flat reports` = c(
+    paste(
+      format_count(
+        as.numeric(flat_receipt$submission_bytes) +
+          as.numeric(flat_receipt$variant_bytes)
+      ),
+      "bytes"
+    ),
+    paste(format_decimal(flat_receipt$elapsed_seconds, 3L), "sec"),
+    receipt_value(flat_receipt, "total_rows"),
+    paste(receipt_value(flat_receipt, "database_bytes"), "bytes"),
+    format_decimal(
+      as.numeric(flat_receipt$database_bytes) /
+        as.numeric(flat_receipt$total_rows),
+      2L
+    ),
+    paste(receipt_value(flat_receipt, "peak_rss_kib"), "KiB"),
+    receipt_pair(
+      flat_receipt, "raw_location_rows_grch38", "vcf_rows_grch38"
+    ),
+    receipt_pair(
+      flat_receipt, "raw_location_rows_grch37", "vcf_rows_grch37"
+    ),
+    receipt_value(flat_receipt, "duplicate_record_keys"),
+    receipt_value(flat_receipt, "nested_columns")
+  ),
+  `2 July 2026 VCV XML` = c(
+    paste(receipt_value(xml_receipt, "source_bytes"), "bytes"),
+    paste(format_decimal(xml_receipt$elapsed_seconds, 3L), "sec"),
+    receipt_value(xml_receipt, "total_rows"),
+    paste(receipt_value(xml_receipt, "database_bytes"), "bytes"),
+    format_decimal(
+      as.numeric(xml_receipt$database_bytes) /
+        as.numeric(xml_receipt$total_rows),
+      2L
+    ),
+    paste(receipt_value(xml_receipt, "peak_rss_kib"), "KiB"),
+    receipt_pair(xml_receipt, "raw_location_rows_grch38", "vcf_rows_grch38"),
+    receipt_pair(xml_receipt, "raw_location_rows_grch37", "vcf_rows_grch37"),
+    receipt_value(xml_receipt, "duplicate_record_keys"),
+    receipt_value(xml_receipt, "nested_columns")
+  ),
+  check.names = FALSE
+)
+knitr::kable(benchmark_summary, align = c("l", "r", "r"))
+```
 
-The flat total includes 4,124,600 stored policy decisions. XML stores source
-facts only; its 4,273,846 derived allele decisions remain virtual until an
-explicit publication. A tidy XML publication with those decisions therefore
-contains 113,646,582 rows. That cardinality is not itself a DuckDB concern.
+The flat total includes
+`r format_count(flat_receipt$rows_decision)` stored policy decisions. XML
+stores source facts only; its
+`r format_count(xml_receipt$virtual_policy_decision_rows)` derived allele
+decisions remain virtual until an explicit publication. A tidy XML publication
+with those decisions therefore contains
+`r format_count(xml_receipt$published_rows_with_policy_decisions)` rows. That
+cardinality is not itself a DuckDB concern.
 Keeping GRCh37 and GRCh38 coordinates, exact sequence accessions, alternate
 placements, separate X/Y placements, and source locations without usable VCF
 tuples is the more important property.
 
-Both runs used DuckDB 1.5.3 on Linux, an Intel Core i5-13500, four DuckDB
-threads, an 8 GB DuckDB memory limit, and
+Both runs used DuckDB `r flat_receipt$duckdb_version` on Linux, an
+`r flat_receipt$cpu`, `r flat_receipt$threads` DuckDB threads, a
+`r flat_receipt$memory_limit` DuckDB memory limit, and
 `preserve_insertion_order = false`. A DuckDB memory limit is not a process RSS
 limit: native parsing, compression, allocators, and other process memory remain
 outside the configured buffer budget.
 
 The XML measurement reused database blocks released by an immediately
 preceding failed policy-materialization experiment, and both runs used a warm
-filesystem cache. The final XML checkpoint had 35,417 live and 360 free
-256-KiB blocks; unlike the old durable-staging layout, it did not retain about
-15 GiB of dropped staging blocks. These are observed engineering measurements,
-not cold-cache or cross-machine guarantees.
+filesystem cache. The final XML checkpoint had
+`r format_count(xml_receipt$database_used_blocks)` live and
+`r format_count(xml_receipt$database_free_blocks)` free
+`r format_count(as.numeric(xml_receipt$database_block_size) / 1024)`-KiB
+blocks. These are observed engineering measurements, not cold-cache or
+cross-machine guarantees.
 
 The timed scope is the import function. Connection creation, package loading,
 final `CHECKPOINT`, and process startup are excluded. Complete process times
-were 225.11 seconds for the flat reports and 1,715.47 seconds for XML.
+were `r format_decimal(flat_receipt$complete_process_elapsed_seconds, 2L)`
+seconds for the flat reports and
+`r format_decimal(xml_receipt$complete_process_elapsed_seconds, 2L)` seconds
+for XML.
 
 Run the benchmark with:
 
