@@ -3,7 +3,7 @@
 The native extension is intentionally small:
 
 - DuckDB C extension headers are pinned for every bundled exact engine release
-  under `duckdb_capi/v1.5.0/` through `v1.5.4/`. Each
+  under `duckdb_capi/v1.5.0/` through `v1.5.5/`. Each
   `duckdb_headers.json` records its upstream revision and repaired-header
   checksums; `versions.txt` is the build manifest.
 - `tools/fetch_duckdb_headers.R --ref vMAJOR.MINOR.PATCH` is the explicit

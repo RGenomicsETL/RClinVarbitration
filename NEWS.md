@@ -70,7 +70,7 @@
   and separate disease- and allele-level decision views.
 - Retain imported SCV source order for deterministic strong-review decisions.
 - Bundle exact `C_STRUCT_UNSTABLE` extension artifacts for DuckDB `v1.5.0`
-  through `v1.5.4`, selected from the enabled connection's engine version.
+  through `v1.5.5`, selected from the enabled connection's engine version.
 
 # RClinVarbitration 0.1.0
 

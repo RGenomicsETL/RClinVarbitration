@@ -2,7 +2,7 @@ fixture <- system.file("extdata", "VCV_XML_VCV000091629.xml.gz", package = "RCli
 expect_true(nzchar(fixture))
 expect_true(file.exists(fixture))
 
-supported_versions <- paste0("v1.5.", 0:4)
+supported_versions <- paste0("v1.5.", 0:5)
 platform_con <- DBI::dbConnect(duckdb::duckdb())
 engine_platform <- DBI::dbGetQuery(platform_con, "PRAGMA platform")$platform
 DBI::dbDisconnect(platform_con, shutdown = TRUE)
