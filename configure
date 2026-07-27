@@ -125,7 +125,7 @@ if [ "$WASM_BUILD" = yes ]; then
   # linker flags or native symbol-hiding flags into the Emscripten link.
   CFLAGS="$R_CFLAGS $R_CPICFLAGS -O2 -fPIC $EXTRA_CFLAGS"
 else
-  CFLAGS="$R_CFLAGS $R_CPICFLAGS -O2 -fPIC -fvisibility=hidden -Wall -Wextra -Werror $EXTRA_CFLAGS"
+  CFLAGS="$R_CFLAGS $R_CPICFLAGS -O2 -fPIC -fvisibility=hidden -Wall -Wextra -Wpedantic -Werror $EXTRA_CFLAGS"
 fi
 
 for DUCKDB_VERSION in $BUILD_VERSIONS; do
