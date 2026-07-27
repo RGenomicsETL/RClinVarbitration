@@ -377,6 +377,7 @@ rclinvarbitration_import_flat <- function(
         " (FORMAT PARQUET, COMPRESSION ZSTD)"
       )
     )
+    parquet_path <- normalizePath(parquet_path, mustWork = TRUE)
   }
   release_receipt <- data.frame(
     release_id = release_id,
