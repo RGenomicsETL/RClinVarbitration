@@ -15,12 +15,12 @@
 Source:
 [`DESCRIPTION`](https://github.com/RGenomicsETL/RClinVarbitration/blob/main/DESCRIPTION)
 
-Toure S (2026). *RClinVarbitration: Stream ClinVar XML into Relational
-DuckDB Tables*. R package version 0.1.1,
+Toure S (2026). *RClinVarbitration: Build Tidy ClinVar Evidence and
+Arbitration Tables*. R package version 0.1.1,
 <https://github.com/RGenomicsETL/RClinVarbitration>.
 
     @Manual{,
-      title = {RClinVarbitration: Stream ClinVar XML into Relational DuckDB Tables},
+      title = {RClinVarbitration: Build Tidy ClinVar Evidence and Arbitration Tables},
       author = {Sounkou Mahamane Toure},
       year = {2026},
       note = {R package version 0.1.1},

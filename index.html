@@ -5,14 +5,14 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>Stream ClinVar XML into Relational DuckDB Tables • RClinVarbitration</title>
+<title>Build Tidy ClinVar Evidence and Arbitration Tables • RClinVarbitration</title>
 <script src="deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
 <script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Stream ClinVar XML into Relational DuckDB Tables">
-<meta name="description" content="Streams official ClinVar VCV XML releases, including gzip inputs, into focused relational tables in DuckDB. A package-owned native extension uses libxml2's forward reader to retain VCV variants, normalized alleles, RCV aggregates, SCV submissions, conditions, observations, citations, and attributable evidence text without loading the release into R. ClinVarbitration policy is a derived SQL layer over those retained source relations, with a separate direct reproducer for archived NCBI flat-file releases.">
-<meta property="og:description" content="Streams official ClinVar VCV XML releases, including gzip inputs, into focused relational tables in DuckDB. A package-owned native extension uses libxml2's forward reader to retain VCV variants, normalized alleles, RCV aggregates, SCV submissions, conditions, observations, citations, and attributable evidence text without loading the release into R. ClinVarbitration policy is a derived SQL layer over those retained source relations, with a separate direct reproducer for archived NCBI flat-file releases.">
+<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Build Tidy ClinVar Evidence and Arbitration Tables">
+<meta name="description" content="Joins official ClinVar variant and submission reports directly into one tidy scalar DuckDB table containing variations, alleles, GRCh37/GRCh38 locations, decisions, source assertions, and gene links. ClinVarbitration policy is implemented in SQL over those reports. An optional package-owned native extension streams VCV XML into the same table when richer observations, conditions, citations, attributes, and attributable evidence text are required.">
+<meta property="og:description" content="Joins official ClinVar variant and submission reports directly into one tidy scalar DuckDB table containing variations, alleles, GRCh37/GRCh38 locations, decisions, source assertions, and gene links. ClinVarbitration policy is implemented in SQL over those reports. An optional package-owned native extension streams VCV XML into the same table when richer observations, conditions, citations, attributes, and attributable evidence text are required.">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -61,8 +61,9 @@
 <div class="page-header"><h1 id="rclinvarbitration">RClinVarbitration<a class="anchor" aria-label="anchor" href="#rclinvarbitration"></a>
 </h1></div>
 <p><a href="https://github.com/RGenomicsETL/RClinVarbitration/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/RGenomicsETL/RClinVarbitration/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a> <a href="https://rgenomicsetl.github.io/RClinVarbitration/"><img src="https://github.com/RGenomicsETL/RClinVarbitration/actions/workflows/pkgdown.yaml/badge.svg" alt="pkgdown"></a> <a href="https://rgenomicsetl.r-universe.dev/" class="external-link"><img src="https://rgenomicsetl.r-universe.dev/badges/:name" alt="r-universe"></a></p>
-<p><code>RClinVarbitration</code> streams official ClinVar VCV XML/XML.GZ releases into relational DuckDB tables and derives ClinVarbitration-style decisions from the retained SCV submissions. The import is a single forward scan: it does not load the XML release into an R data frame or an in-memory XML tree.</p>
-<p>The package bundles exact-version DuckDB extensions for DuckDB <code>v1.5.0</code> through <code>v1.5.4</code>. Connections must allow locally built unsigned extensions.</p>
+<p><code>RClinVarbitration</code> joins ClinVar’s official <code>variant_summary</code> and <code>submission_summary</code> reports directly into one tidy DuckDB table. Each decision, SCV submission, RCV accession, and allele-gene link is one scalar row. The package applies the ClinVarbitration decision policy during the same import; no XML database is required for ordinary release tracking.</p>
+<p>VCV XML import remains available when an analysis needs source observations, citations, or text that the flat reports do not carry.</p>
+<p>The package bundles exact-version DuckDB extensions for DuckDB <code>v1.5.0</code> through <code>v1.5.5</code>. Connections must allow locally built unsigned extensions.</p>
 <div class="section level2">
 <h2 id="installation-and-platforms">Installation and platforms<a class="anchor" aria-label="anchor" href="#installation-and-platforms"></a>
 </h2>
@@ -84,189 +85,172 @@
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://r.duckdb.org/" class="external-link">duckdb</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/RGenomicsETL/RClinVarbitration" class="external-link">RClinVarbitration</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">con</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbConnect.html" class="external-link">dbConnect</a></span><span class="op">(</span><span class="fu"><a href="https://r.duckdb.org/reference/duckdb.html" class="external-link">duckdb</a></span><span class="op">(</span>config <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>allow_unsigned_extensions <span class="op">=</span> <span class="st">"true"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="reference/rclinvarbitration_enable.html">rclinvarbitration_enable</a></span><span class="op">(</span><span class="va">con</span><span class="op">)</span></span>
-<span><span class="fu"><a href="reference/rclinvarbitration_init.html">rclinvarbitration_init</a></span><span class="op">(</span><span class="va">con</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Replace this bundled one-record fixture with a complete VCV XML/XML.GZ file.</span></span>
-<span><span class="va">xml</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
-<span>  <span class="st">"extdata"</span>, <span class="st">"VCV_XML_VCV000091629.xml.gz"</span>,</span>
+<span><span class="va">con</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbConnect.html" class="external-link">dbConnect</a></span><span class="op">(</span><span class="fu"><a href="https://r.duckdb.org/reference/duckdb.html" class="external-link">duckdb</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">variant_report</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
+<span>  <span class="st">"extdata"</span>, <span class="st">"variant_summary_fixture.txt"</span>,</span>
 <span>  package <span class="op">=</span> <span class="st">"RClinVarbitration"</span></span>
 <span><span class="op">)</span></span>
-<span><span class="va">imported</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/rclinvarbitration_import_xml.html">rclinvarbitration_import_xml</a></span><span class="op">(</span></span>
-<span>  <span class="va">con</span>, <span class="va">xml</span>, release_id <span class="op">=</span> <span class="st">"clinvar-example"</span></span>
+<span><span class="va">submission_report</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
+<span>  <span class="st">"extdata"</span>, <span class="st">"submission_summary_fixture.txt"</span>,</span>
+<span>  package <span class="op">=</span> <span class="st">"RClinVarbitration"</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">imported</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/rclinvarbitration_import_flat.html">rclinvarbitration_import_flat</a></span><span class="op">(</span></span>
+<span>  <span class="va">con</span>,</span>
+<span>  <span class="va">submission_report</span>,</span>
+<span>  <span class="va">variant_report</span>,</span>
+<span>  release_id <span class="op">=</span> <span class="st">"clinvar-example"</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"</span></span>
-<span><span class="st">  SELECT vcv_accession, variation_id, aggregate_classification</span></span>
-<span><span class="st">  FROM clinvar_variants</span></span>
+<span><span class="st">  SELECT record_kind, count(*) AS rows</span></span>
+<span><span class="st">  FROM clinvar</span></span>
+<span><span class="st">  GROUP BY record_kind</span></span>
+<span><span class="st">  ORDER BY record_kind</span></span>
 <span><span class="st">"</span><span class="op">)</span></span></code></pre></div>
-<div class="sourceCode" id="cb3"><pre class="sourceCode R"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="do">##   vcv_accession variation_id     aggregate_classification</span></span>
-<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="do">## 1  VCV000091629        91629 Pathogenic/Likely pathogenic</span></span></code></pre></div>
-<p>For a complete current or archived release, use the checksum-validating download cache and a file-backed database:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode R"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="do">##     record_kind rows</span></span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="do">## 1        allele    2</span></span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="do">## 2      decision    1</span></span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="do">## 3          gene    2</span></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="do">## 4      location    3</span></span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="do">## 5 rcv_assertion    2</span></span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="do">## 6 scv_assertion    2</span></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="do">## 7     variation    2</span></span></code></pre></div>
+<p>For a complete current or archived release, download both reports and use a file-backed database:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">release</span> <span class="op">&lt;-</span> <span class="st">"2026-03"</span></span>
-<span><span class="va">xml</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/rclinvarbitration_download_clinvar.html">rclinvarbitration_download_clinvar</a></span><span class="op">(</span><span class="va">release</span><span class="op">)</span></span>
-<span><span class="co"># `"latest"` is also accepted, but assign its resolved content an immutable ID.</span></span>
+<span><span class="va">reports</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/rclinvarbitration_download_clinvar.html">rclinvarbitration_download_clinvar</a></span><span class="op">(</span></span>
+<span>  <span class="va">release</span>,</span>
+<span>  file <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"submission_summary"</span>, <span class="st">"variant_summary"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">full_con</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbConnect.html" class="external-link">dbConnect</a></span><span class="op">(</span><span class="fu"><a href="https://r.duckdb.org/reference/duckdb.html" class="external-link">duckdb</a></span><span class="op">(</span></span>
 <span>  dbdir <span class="op">=</span> <span class="st">"clinvar.duckdb"</span>,</span>
 <span>  config <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
-<span>    allow_unsigned_extensions <span class="op">=</span> <span class="st">"true"</span>,</span>
-<span>    memory_limit <span class="op">=</span> <span class="st">"2GB"</span>,</span>
+<span>    memory_limit <span class="op">=</span> <span class="st">"8GB"</span>,</span>
 <span>    preserve_insertion_order <span class="op">=</span> <span class="st">"false"</span>,</span>
-<span>    threads <span class="op">=</span> <span class="st">"2"</span></span>
+<span>    threads <span class="op">=</span> <span class="st">"4"</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="fu"><a href="reference/rclinvarbitration_enable.html">rclinvarbitration_enable</a></span><span class="op">(</span><span class="va">full_con</span><span class="op">)</span></span>
-<span><span class="fu"><a href="reference/rclinvarbitration_import_xml.html">rclinvarbitration_import_xml</a></span><span class="op">(</span></span>
-<span>  <span class="va">full_con</span>, <span class="va">xml</span>, release_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"ncbi-vcv-"</span>, <span class="va">release</span><span class="op">)</span></span>
+<span><span class="va">full_import</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/rclinvarbitration_import_flat.html">rclinvarbitration_import_flat</a></span><span class="op">(</span></span>
+<span>  <span class="va">full_con</span>,</span>
+<span>  <span class="va">reports</span><span class="op">[[</span><span class="st">"submission_summary"</span><span class="op">]</span><span class="op">]</span>,</span>
+<span>  <span class="va">reports</span><span class="op">[[</span><span class="st">"variant_summary"</span><span class="op">]</span><span class="op">]</span>,</span>
+<span>  release_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"ncbi-clinvar-"</span>, <span class="va">release</span><span class="op">)</span>,</span>
+<span>  parquet_path <span class="op">=</span> <span class="st">"clinvar-2026-03.parquet"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>The main query surfaces are:</p>
+<p>The table is deliberately long rather than nested:</p>
 <table class="table">
-<colgroup>
-<col width="52%">
-<col width="47%">
-</colgroup>
 <thead><tr>
-<th align="left">Relation</th>
-<th align="left">Content</th>
+<th align="left"><code>record_kind</code></th>
+<th align="left">One row represents</th>
 </tr></thead>
 <tbody>
 <tr>
 <td align="left">
-<code>clinvar_variants</code>, <code>clinvar_alleles</code>, <code>clinvar_locations</code>
+<code>variation</code>, <code>allele</code>
 </td>
-<td align="left">VCV records and assembly-specific alleles</td>
+<td align="left">a ClinVar variation or constituent allele</td>
 </tr>
 <tr>
-<td align="left">
-<code>clinvar_rcv_assertions</code>, <code>clinvar_scv_assertions</code>
-</td>
-<td align="left">condition-specific aggregates and individual submissions</td>
+<td align="left"><code>location</code></td>
+<td align="left">one assembly-specific VCF placement</td>
 </tr>
 <tr>
-<td align="left">
-<code>clinvar_conditions</code>, <code>clinvar_observations</code>, <code>clinvar_text</code>
-</td>
-<td align="left">attributable condition, observation, and text evidence</td>
+<td align="left"><code>decision</code></td>
+<td align="left">the allele-level ClinVarbitration decision</td>
 </tr>
 <tr>
-<td align="left"><code>clinvar_disease_submissions</code></td>
-<td align="left">SCV evidence grouped by disease</td>
+<td align="left"><code>scv_assertion</code></td>
+<td align="left">one submitted classification</td>
 </tr>
 <tr>
-<td align="left">
-<code>clinvar_policy_decisions</code>, <code>clinvar_policy_allele_decisions</code>
-</td>
-<td align="left">disease- and allele-level arbitration</td>
+<td align="left"><code>rcv_assertion</code></td>
+<td align="left">one RCV accession and phenotype</td>
 </tr>
 <tr>
-<td align="left"><code>clinvar_gene_summaries</code></td>
-<td align="left">policy-versioned disease/classification counts by gene</td>
-</tr>
-<tr>
-<td align="left"><code>clinvar_gene_disease_summaries</code></td>
-<td align="left">descriptive ClinVar evidence strata per gene and disease</td>
-</tr>
-<tr>
-<td align="left">
-<code>clinvar_hpo_terms</code>, <code>clinvar_literature_links</code>
-</td>
-<td align="left">normalized phenotype and literature links</td>
-</tr>
-<tr>
-<td align="left"><code>clinvar_semantic_documents</code></td>
-<td align="left">attributable text documents for retrieval workflows</td>
+<td align="left"><code>gene</code></td>
+<td align="left">one allele-gene link</td>
 </tr>
 </tbody>
 </table>
+<p>GRCh37 and GRCh38 locations are retained together. <code>clinvar_vcf</code> exposes one-based <code>position</code>, <code>reference</code>, and <code>alternate</code> fields with conventional <code>1</code>/<code>chr1</code> primary-contig names. The exact <code>sequence_accession</code> is retained; alternate placements use that accession as <code>contig</code>, and X/Y PAR placements remain separate rows. Raw <code>location</code> rows are still retained when ClinVar lacks a complete VCF tuple, as occurs for some structural variants; those rows are deliberately absent from <code>clinvar_vcf</code>.</p>
+<p>Measured release summaries are rendered from their committed receipts:</p>
+<table class="table">
+<colgroup>
+<col width="48%">
+<col width="10%">
+<col width="7%">
+<col width="16%">
+<col width="16%">
+</colgroup>
+<thead><tr>
+<th align="left">Source</th>
+<th align="right">Stored facts</th>
+<th align="right">DuckDB</th>
+<th align="right">GRCh38 raw / VCF</th>
+<th align="right">GRCh37 raw / VCF</th>
+</tr></thead>
+<tbody>
+<tr>
+<td align="left"><a href="inst/benchmarks/full-flat-release-2026-03.dcf">March 2026 flat</a></td>
+<td align="right">38,596,056</td>
+<td align="right">4.98 GiB</td>
+<td align="right">4,410,536 / 4,389,459</td>
+<td align="right">4,463,601 / 4,389,810</td>
+</tr>
+<tr>
+<td align="left"><a href="inst/benchmarks/full-release-2026-07-02.dcf">2 July 2026 XML</a></td>
+<td align="right">109,372,736</td>
+<td align="right">8.73 GiB</td>
+<td align="right">4,465,523 / 4,444,013</td>
+<td align="right">4,518,795 / 4,444,344</td>
+</tr>
+</tbody>
+</table>
+<p>XML adds observations, citations, names, cross-references, attributes, and text. Both paths preserve assembly and sequence-accession identity.</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"</span></span>
+<span><span class="st">  SELECT assembly, contig, position, reference, alternate</span></span>
+<span><span class="st">  FROM clinvar_vcf</span></span>
+<span><span class="st">  ORDER BY assembly</span></span>
+<span><span class="st">"</span><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode R"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="do">##   assembly contig position reference alternate</span></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="do">## 1   GRCh37      1       90         A         G</span></span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a><span class="do">## 2   GRCh38   chr1      100         A         G</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="ducklake-publication-and-release-changes">DuckLake publication and release changes<a class="anchor" aria-label="anchor" href="#ducklake-publication-and-release-changes"></a>
 </h2>
-<p>The enhanced Parquet export is the canonical case-independent ClinVar evidence relation. It has one disease-specific decision per assembly locus and retains the policy identity, stable source keys, decision counts, a complete-row <code>content_sha256</code>, and nested SCV, RCV, and gene receipts:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">enhanced_path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".parquet"</span><span class="op">)</span></span>
-<span><span class="va">release_receipt</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/rclinvarbitration_export_clinvarbitration_parquet.html">rclinvarbitration_export_clinvarbitration_parquet</a></span><span class="op">(</span></span>
-<span>  <span class="va">full_con</span>,</span>
-<span>  <span class="va">enhanced_path</span>,</span>
-<span>  release_id <span class="op">=</span> <span class="st">"ncbi-vcv-2026-07"</span>,</span>
-<span>  assembly <span class="op">=</span> <span class="st">"GRCh38"</span>,</span>
-<span>  schema <span class="op">=</span> <span class="st">"enhanced"</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>Publish that relation into a persistent DuckLake table. One publication transaction becomes one DuckLake snapshot, and DuckLake’s data-change feed then returns the exact insert, delete, and update rows. RClinVarbitration does not implement a second snapshot or delta engine.</p>
-<p>The <a href="https://github.com/RGenomicsETL/ducklake-r" class="external-link">RGenomicsETL <code>ducklake-r</code> fork</a> registers a whole Parquet batch atomically with <code>add_data_files(..., create = TRUE)</code>, without copying it or collecting it into R. A persistent staging table can then feed a key-based merge:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">attach_ducklake</span><span class="op">(</span><span class="st">"clinvar_lake"</span>, lake_path <span class="op">=</span> <span class="st">"clinvar-lake"</span><span class="op">)</span></span>
-<span><span class="va">lake_con</span> <span class="op">&lt;-</span> <span class="fu">ducklake</span><span class="fu">::</span><span class="fu">get_ducklake_connection</span><span class="op">(</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># One-time staging-table bootstrap from the first enhanced Parquet.</span></span>
-<span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">add_data_files</span><span class="op">(</span></span>
-<span>  <span class="st">"clinvar_incoming"</span>, <span class="va">enhanced_path</span>, create <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Publish the already registered first release. For later releases, put</span></span>
-<span><span class="co"># ducklake::add_data_files("clinvar_incoming", next_path) at the start of</span></span>
-<span><span class="co"># this transaction.</span></span>
-<span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">with_transaction</span><span class="op">(</span><span class="op">{</span></span>
-<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span></span>
-<span>    <span class="va">lake_con</span>,</span>
-<span>    <span class="st">"CREATE TABLE IF NOT EXISTS clinvar_decisions AS</span></span>
-<span><span class="st">       SELECT * FROM clinvar_incoming LIMIT 0"</span></span>
-<span>  <span class="op">)</span></span>
-<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span></span>
-<span>    <span class="va">lake_con</span>,</span>
-<span>    <span class="st">"DELETE FROM clinvar_decisions AS current</span></span>
-<span><span class="st">       WHERE NOT EXISTS (</span></span>
-<span><span class="st">         SELECT 1 FROM clinvar_incoming AS incoming</span></span>
-<span><span class="st">         WHERE incoming.record_key = current.record_key</span></span>
-<span><span class="st">       )"</span></span>
-<span>  <span class="op">)</span></span>
-<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span></span>
-<span>    <span class="va">lake_con</span>,</span>
-<span>    <span class="st">"MERGE INTO clinvar_decisions AS current</span></span>
-<span><span class="st">       USING clinvar_incoming AS incoming USING (record_key)</span></span>
-<span><span class="st">       WHEN MATCHED AND</span></span>
-<span><span class="st">         current.content_sha256 IS DISTINCT FROM incoming.content_sha256</span></span>
-<span><span class="st">         THEN UPDATE</span></span>
-<span><span class="st">       WHEN NOT MATCHED THEN INSERT"</span></span>
-<span>  <span class="op">)</span></span>
-<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span><span class="va">lake_con</span>, <span class="st">"DELETE FROM clinvar_incoming"</span><span class="op">)</span></span>
-<span><span class="op">}</span>, author <span class="op">=</span> <span class="st">"RClinVarbitration"</span>,</span>
-<span>   commit_message <span class="op">=</span> <span class="st">"Publish ncbi-vcv-2026-07 default policy"</span>,</span>
-<span>   commit_extra_info <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span></span>
-<span>     <span class="st">"release_id=ncbi-vcv-2026-07"</span>,</span>
-<span>     <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"policy_version="</span>, <span class="va">release_receipt</span><span class="op">$</span><span class="va">policy_version</span><span class="op">)</span>,</span>
-<span>     sep <span class="op">=</span> <span class="st">";"</span></span>
-<span>   <span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">snapshots</span> <span class="op">&lt;-</span> <span class="fu">ducklake</span><span class="fu">::</span><span class="fu">list_table_snapshots</span><span class="op">(</span><span class="op">)</span></span>
+<p>The <a href="https://github.com/RGenomicsETL/ducklake-r" class="external-link">RGenomicsETL <code>ducklake-r</code> fork</a> registers that Parquet without collecting it into R. RClinVarbitration owns the key-based publication:</p>
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">set_ducklake_connection</span><span class="op">(</span><span class="va">full_con</span><span class="op">)</span></span>
+<span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">attach_ducklake</span><span class="op">(</span><span class="st">"clinvar_lake"</span>, lake_path <span class="op">=</span> <span class="st">"clinvar-lake"</span><span class="op">)</span></span>
+<span><span class="va">publication</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/rclinvarbitration_publish_ducklake.html">rclinvarbitration_publish_ducklake</a></span><span class="op">(</span><span class="va">full_con</span>, <span class="va">full_import</span><span class="op">)</span></span>
 <span><span class="va">changes</span> <span class="op">&lt;-</span> <span class="fu">ducklake</span><span class="fu">::</span><span class="fu">get_table_changes</span><span class="op">(</span></span>
-<span>  <span class="st">"clinvar_decisions"</span>,</span>
-<span>  start <span class="op">=</span> <span class="va">publication_snapshot_id</span>,</span>
-<span>  end <span class="op">=</span> <span class="va">publication_snapshot_id</span></span>
+<span>  <span class="st">"clinvar"</span>,</span>
+<span>  <span class="va">publication</span><span class="op">$</span><span class="va">snapshot_id</span>,</span>
+<span>  <span class="va">publication</span><span class="op">$</span><span class="va">snapshot_id</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p><code>changes</code> contains <code>insert</code>, <code>delete</code>, <code>update_preimage</code>, and <code>update_postimage</code> rows. The nested <code>scv_submissions</code> and allele-level <code>rcv_aggregates</code> retain the source assertions behind a decision; each RCV item keeps its own disease key, so no SCV/RCV disease equivalence is invented. A release comparison must hold the policy profile fixed; a submitter-policy experiment must hold the source snapshot fixed.</p>
-<p><code>clinvar_gene_disease_summaries</code> stratifies the retained ClinVar evidence as expert-reviewed pathogenic, multi-submitter pathogenic, reported pathogenic, conflicting, uncertain, or benign-only. These are useful retrieval and reanalysis strata, not claims that ClinVar alone has established gene–disease validity.</p>
+<p>The function initializes persistent staging once, validates keys and policy identity, and commits inserts, updates, and withdrawals as one snapshot. Unchanged rows are untouched. DuckLake’s change feed is the delta authority.</p>
+<p>Complete-release row counts and storage depend on the selected source path: the compact flat reports contain the ordinary arbitration substrate, while XML adds source entities that are absent from those reports. The storage vignette records the measured workloads separately rather than treating them as the same benchmark.</p>
 <p>Read the <a href="https://rgenomicsetl.github.io/RClinVarbitration/articles/arbitration-algorithm.html">arbitration algorithm</a>, <a href="https://rgenomicsetl.github.io/RClinVarbitration/articles/storage-cache-and-performance.html">storage and caching guide</a>, and <a href="https://rgenomicsetl.github.io/RClinVarbitration/articles/semantic-ducklake-variantstory.html">semantic/DuckLake/VariantStory integration</a>. The <a href="https://github.com/RGenomicsETL/RClinVarbitration/blob/main/docs/ERRATA.md" class="external-link">deviation and differential audit</a> records known differences from upstream ClinVarbitration and ClinVar.</p>
-<p>A measured complete 2026-07-02 release (5.42 GiB compressed XML) imported in 21 minutes 52.5 seconds and produced a 22.33-GiB physical DuckDB file. The storage guide reports hardware, row counts, peak memory, and the used/free block split behind that physical high-water size.</p>
 </div>
 <div class="section level2">
 <h2 id="submitter-exclusions">Submitter exclusions<a class="anchor" aria-label="anchor" href="#submitter-exclusions"></a>
 </h2>
-<p>Imports retain all source submissions. Exclusions are parameters of decision export, so the evidence remains available for audit and alternative policies. Names are matched case-insensitively after trimming whitespace.</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".parquet"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="reference/rclinvarbitration_export_clinvarbitration_parquet.html">rclinvarbitration_export_clinvarbitration_parquet</a></span><span class="op">(</span></span>
-<span>  <span class="va">con</span>,</span>
-<span>  <span class="va">out</span>,</span>
+<p>Flat imports retain all source submissions. Exclusions change only the <code>decision</code> rows and are recorded in the import receipt. Names are matched case-insensitively after trimming whitespace.</p>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/rclinvarbitration_import_flat.html">rclinvarbitration_import_flat</a></span><span class="op">(</span></span>
+<span>  <span class="va">con</span>, <span class="va">submission_report</span>, <span class="va">variant_report</span>,</span>
 <span>  release_id <span class="op">=</span> <span class="st">"clinvar-example"</span>,</span>
-<span>  assembly <span class="op">=</span> <span class="st">"GRCh38"</span>,</span>
 <span>  submitter_exclusions <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Example laboratory"</span>, <span class="st">"Another submitter"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>The argument adds to exclusions already configured for <code>profile_id</code>. Named, reusable profiles can still be stored in <code>clinvar_policy_profiles</code> and <code>clinvar_policy_submitter_exclusions</code>.</p>
+</div>
+<div class="section level2">
+<h2 id="optional-xml-enrichment">Optional XML enrichment<a class="anchor" aria-label="anchor" href="#optional-xml-enrichment"></a>
+</h2>
+<p>Call <code><a href="reference/rclinvarbitration_enable.html">rclinvarbitration_enable()</a></code>, <code><a href="reference/rclinvarbitration_init.html">rclinvarbitration_init()</a></code>, and <code><a href="reference/rclinvarbitration_import_xml.html">rclinvarbitration_import_xml()</a></code> only when the analysis needs XML-only observations, citations, attributable text, or disease-scoped assertion structure. The XML path writes the same scalar <code>clinvar</code> table as the flat import. Compatibility relation names such as <code>clinvar_locations</code> and <code>clinvar_scv_assertions</code> are views over that table. XML-derived policy decisions remain views until an explicit Parquet or DuckLake publication asks to materialize them.</p>
 </div>
 <div class="section level2">
 <h2 id="comparison-with-upstream-clinvarbitration">Comparison with upstream ClinVarbitration<a class="anchor" aria-label="anchor" href="#comparison-with-upstream-clinvarbitration"></a>
@@ -287,7 +271,7 @@
 <tr>
 <td align="left">Primary input</td>
 <td align="left">NCBI submission and variant summary files</td>
-<td align="left">complete VCV XML/XML.GZ</td>
+<td align="left">the same two reports</td>
 </tr>
 <tr>
 <td align="left">Runtime</td>
@@ -297,12 +281,12 @@
 <tr>
 <td align="left">Decision scope</td>
 <td align="left">allele</td>
-<td align="left">allele and disease</td>
+<td align="left">allele; optional XML disease enrichment</td>
 </tr>
 <tr>
 <td align="left">Main outputs</td>
 <td align="left">TSV, Hail Table, VCF, PM5 resource</td>
-<td align="left">relational tables/views and Parquet</td>
+<td align="left">one tidy DuckDB/Parquet relation</td>
 </tr>
 <tr>
 <td align="left">Submitter exclusion</td>
@@ -319,15 +303,14 @@
 </tr>
 </tbody>
 </table>
-<p>The shared decision rules include the 2016 ACMG date filter, classification bins, 60/20 majority rule, strong-review precedence, and star calculation. The XML-derived Parquet export has the upstream seven-column decision schema, but is not expected to be byte-identical because its source and grouping differ.</p>
-<p>The archived-flat-file reproducer is retained only as a differential-validation utility; it is redundant for ordinary XML imports. An exact-input execution of the pinned upstream Python TSV stage and this package’s flat reproducer over the complete March 2026 archives produced the same 4,125,389 keys with zero classification or star differences. Input, code, configuration, and output digests are in the <a href="https://github.com/RGenomicsETL/RClinVarbitration/blob/main/inst/audits/march-2026-flat-exact-oracle.dcf" class="external-link">oracle manifest</a>.</p>
+<p>The shared decision rules include the 2016 ACMG date filter, classification bins, 60/20 majority rule, strong-review precedence, and star calculation. The compatibility export retains the upstream seven-column decision schema. An exact-input execution of the pinned upstream Python TSV stage and this package’s flat reproducer over the complete March 2026 archives produced the same 4,125,389 keys with zero classification or star differences. Input, code, configuration, and output digests are in the <a href="https://github.com/RGenomicsETL/RClinVarbitration/blob/main/inst/audits/march-2026-flat-exact-oracle.dcf" class="external-link">oracle manifest</a>.</p>
 <p>The independently matched XML/flat audit classified every one of the 16 shared value differences and 361 key-set differences with source-row receipts. Most come from NCBI flat rows whose classification is <code>-</code> while XML carries a current classification; the remainder are one duplicate-SCV identity case, five source vocabulary differences, and two nested compound alleles. The <a href="https://github.com/RGenomicsETL/RClinVarbitration/blob/main/docs/ERRATA.md" class="external-link">ERRATA audit</a> contains the full counts and receipts. A published Zenodo release with 16,865 reference-only keys used an unpinned source snapshot; it is not the exact-input conformance result.</p>
 <p>One deliberate edge-case difference is that RClinVarbitration applies the qualified Illumina benign exclusion declared by upstream. At the pinned commit, the Python implementation’s inner-loop <code>continue</code> does not actually remove that submission, so compatibility here follows the documented policy rather than that implementation accident.</p>
 </div>
 <div class="section level2">
 <h2 id="evidence-retrieval-and-reanalysis">Evidence retrieval and reanalysis<a class="anchor" aria-label="anchor" href="#evidence-retrieval-and-reanalysis"></a>
 </h2>
-<p>A second motivation is to make ClinVar’s attributable evidence reusable, not only to annotate known alleles. Submission descriptions, comments, HPO links, gene relations, and publication identifiers can support semantic retrieval, dynamic gene-panel proposals, and evidence review for VUS or novel variants. The package provides joinable views for <a href="https://github.com/RGenomicsETL/ducksemantics" class="external-link"><code>ducksemantics</code></a>, DuckLake release history, and the source-observation model planned by <a href="https://github.com/RGenomicsETL/VariantStory" class="external-link"><code>VariantStory</code></a>.</p>
+<p>A second motivation is to make ClinVar evidence reusable, not only to annotate known alleles. The flat table retains submission descriptions, phenotype strings, RCVs, and gene links. Optional XML enrichment adds citations, normalized HPO links, and other attributable observations. These are joinable inputs for <a href="https://github.com/RGenomicsETL/ducksemantics" class="external-link"><code>ducksemantics</code></a>, DuckLake release history, and the source-observation model planned by <a href="https://github.com/RGenomicsETL/VariantStory" class="external-link"><code>VariantStory</code></a>.</p>
 <p>These workflows retrieve and rank evidence; an embedding neighbor does not classify a variant. Provider identity, release, source rows, deterministic evidence admission, and human review must remain explicit.</p>
 </div>
 <div class="section level2">

@@ -108,8 +108,8 @@ criteria, and human review remain separate steps.</p>
 <tbody>
 <tr class="odd">
 <td align="left"><code>clinvar_semantic_documents</code></td>
-<td align="left">attributable text with VCV, SCV, submitter, submitted
-classification, and gene lists</td>
+<td align="left">attributable text with VCV, SCV, submitter, and
+submitted classification</td>
 </tr>
 <tr class="even">
 <td align="left"><code>clinvar_hpo_terms</code></td>
@@ -200,18 +200,19 @@ embedding:</p>
 <p>After a semantic search writes or registers a
 <code>semantic_hits(subject_id, score)</code> relation, a transparent
 dynamic gene-panel proposal can be formed:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="kw">SELECT</span> gene_symbol,</span>
+<div class="sourceCode" id="cb4"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="kw">SELECT</span> cg.symbol <span class="kw">AS</span> gene_symbol,</span>
 <span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>       <span class="fu">max</span>(h.score) <span class="kw">AS</span> best_text_score,</span>
 <span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>       <span class="fu">count</span>(<span class="kw">DISTINCT</span> d.semantic_document_id) <span class="kw">AS</span> supporting_documents,</span>
 <span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>       <span class="fu">max</span>(g.pathogenic_allele_count) <span class="kw">AS</span> clinvar_pathogenic_alleles</span>
 <span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a><span class="kw">FROM</span> semantic_hits h</span>
 <span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a><span class="kw">JOIN</span> clinvar_semantic_documents d</span>
 <span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>  <span class="kw">ON</span> d.semantic_document_id <span class="op">=</span> h.subject_id</span>
-<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a><span class="kw">CROSS</span> <span class="kw">JOIN</span> unnest(d.gene_symbols) <span class="kw">AS</span> genes(gene_symbol)</span>
-<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a><span class="kw">LEFT</span> <span class="kw">JOIN</span> clinvar_gene_summary_cache g</span>
-<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a>  <span class="kw">ON</span> g.release_id <span class="op">=</span> d.release_id <span class="kw">AND</span> g.symbol <span class="op">=</span> genes.gene_symbol</span>
-<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> gene_symbol</span>
-<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> best_text_score <span class="kw">DESC</span>, supporting_documents <span class="kw">DESC</span>;</span></code></pre></div>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a><span class="kw">JOIN</span> clinvar_genes cg</span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>  <span class="kw">ON</span> cg.release_id <span class="op">=</span> d.release_id <span class="kw">AND</span> cg.vcv_accession <span class="op">=</span> d.vcv_accession</span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a><span class="kw">LEFT</span> <span class="kw">JOIN</span> clinvar_gene_summary_cache g</span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>  <span class="kw">ON</span> g.release_id <span class="op">=</span> d.release_id <span class="kw">AND</span> g.symbol <span class="op">=</span> cg.symbol</span>
+<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> cg.symbol</span>
+<span id="cb4-13"><a href="#cb4-13" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> best_text_score <span class="kw">DESC</span>, supporting_documents <span class="kw">DESC</span>;</span></code></pre></div>
 <p>This is a candidate panel with explicit retrieval support, not a
 validated gene-disease panel. Preserve score, source document IDs,
 release, model receipt, and policy profile so reviewers can inspect why
@@ -220,120 +221,29 @@ a gene was proposed.</p>
 <div class="section level2">
 <h2 id="publishing-releases-to-ducklake">Publishing releases to DuckLake<a class="anchor" aria-label="anchor" href="#publishing-releases-to-ducklake"></a>
 </h2>
-<p>DuckLake is useful when multiple applications need immutable source
-releases, Parquet-backed tables, snapshot history, and
-release-to-release comparisons. The recommended boundary is:</p>
-<ol style="list-style-type: decimal">
-<li>download and checksum the source;</li>
-<li>import into a local file-backed DuckDB staging database;</li>
-<li>validate row counts, release metadata, and policy outputs;</li>
-<li>export the source-rich disease-decision Parquet relation;</li>
-<li>register it into a DuckLake staging table without copying;</li>
-<li>merge changed keys into the persistent decision table in one
-publication transaction; and</li>
-<li>retain the policy/profile and source receipt in snapshot
-metadata.</li>
-</ol>
-<p>Do not use a DuckLake snapshot number as a replacement for ClinVar’s
-own source release. Record both. A DuckLake snapshot says when the lake
-changed; the <code>release_id</code>, source URL, digest, and
-import/policy versions say what was published.</p>
-<p>A local DuckLake attachment can be created with standard DuckDB
-SQL:</p>
+<p>The source database keeps attributable evidence. The publication
+table is tidy and long: decisions, SCVs, RCVs, and gene links are
+separate rows joined by stable allele and disease-decision keys.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">metadata</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/normalizePath.html" class="external-link">normalizePath</a></span><span class="op">(</span><span class="st">"clinvar-metadata.ducklake"</span>, mustWork <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">data_path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/normalizePath.html" class="external-link">normalizePath</a></span><span class="op">(</span><span class="st">"clinvar-lake-data"</span>, mustWork <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/files2.html" class="external-link">dir.create</a></span><span class="op">(</span><span class="va">data_path</span>, recursive <span class="op">=</span> <span class="cn">TRUE</span>, showWarnings <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"INSTALL ducklake"</span><span class="op">)</span></span>
-<span><span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"LOAD ducklake"</span><span class="op">)</span></span>
-<span><span class="va">attach_sql</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span></span>
-<span>  <span class="st">"ATTACH"</span>,</span>
-<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbQuoteString.html" class="external-link">dbQuoteString</a></span><span class="op">(</span><span class="va">con</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"ducklake:"</span>, <span class="va">metadata</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  <span class="st">"AS clinvar_lake (DATA_PATH"</span>,</span>
-<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbQuoteString.html" class="external-link">dbQuoteString</a></span><span class="op">(</span><span class="va">con</span>, <span class="va">data_path</span><span class="op">)</span>,</span>
-<span>  <span class="st">")"</span></span>
-<span><span class="op">)</span></span>
-<span><span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span><span class="va">con</span>, <span class="va">attach_sql</span><span class="op">)</span></span>
-<span><span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"USE clinvar_lake"</span><span class="op">)</span></span></code></pre></div>
-<p>The enhanced exporter is the package boundary:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">enhanced_path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".parquet"</span><span class="op">)</span></span>
-<span><span class="va">receipt</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/rclinvarbitration_export_clinvarbitration_parquet.html">rclinvarbitration_export_clinvarbitration_parquet</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">tidy_path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".parquet"</span><span class="op">)</span></span>
+<span><span class="va">tidy</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/rclinvarbitration_export_clinvarbitration_parquet.html">rclinvarbitration_export_clinvarbitration_parquet</a></span><span class="op">(</span></span>
 <span>  <span class="va">con</span>,</span>
-<span>  <span class="va">enhanced_path</span>,</span>
+<span>  <span class="va">tidy_path</span>,</span>
 <span>  release_id <span class="op">=</span> <span class="st">"ncbi-vcv-2026-07-02"</span>,</span>
 <span>  assembly <span class="op">=</span> <span class="st">"GRCh38"</span>,</span>
 <span>  profile_id <span class="op">=</span> <span class="st">"default"</span>,</span>
-<span>  schema <span class="op">=</span> <span class="st">"enhanced"</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>It writes one disease-specific decision per assembly locus with a
-stable <code>record_key</code>, a complete-row
-<code>content_sha256</code>, policy identity, decision counts, and
-nested SCV, RCV, and gene receipts. SCVs are attached to the exact
-disease decision. RCVs remain allele-level receipts and carry their own
-disease keys; their presence does not assert that an SCV condition and
-an RCV condition are equivalent. The ClinVar release receipt is returned
-separately and belongs in the DuckLake snapshot metadata.</p>
-<p>The <a href="https://github.com/RGenomicsETL/ducklake-r" class="external-link">RGenomicsETL
-<code>ducklake-r</code> fork</a> provides atomic Parquet registration.
-<code>add_data_files(..., create = TRUE)</code> creates the staging
-schema and transfers the existing Parquet file to DuckLake without
-copying it or collecting rows into R:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">set_ducklake_connection</span><span class="op">(</span><span class="va">con</span><span class="op">)</span></span>
-<span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">add_data_files</span><span class="op">(</span></span>
-<span>  <span class="st">"clinvar_incoming"</span>, <span class="va">enhanced_path</span>, create <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  schema <span class="op">=</span> <span class="st">"tidy"</span></span>
 <span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">with_transaction</span><span class="op">(</span><span class="op">{</span></span>
-<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span></span>
-<span>    <span class="va">con</span>,</span>
-<span>    <span class="st">"CREATE TABLE IF NOT EXISTS clinvar_decisions AS</span></span>
-<span><span class="st">       SELECT * FROM clinvar_incoming LIMIT 0"</span></span>
-<span>  <span class="op">)</span></span>
-<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span></span>
-<span>    <span class="va">con</span>,</span>
-<span>    <span class="st">"DELETE FROM clinvar_decisions AS current</span></span>
-<span><span class="st">       WHERE NOT EXISTS (</span></span>
-<span><span class="st">         SELECT 1 FROM clinvar_incoming AS incoming</span></span>
-<span><span class="st">         WHERE incoming.record_key = current.record_key</span></span>
-<span><span class="st">       )"</span></span>
-<span>  <span class="op">)</span></span>
-<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span></span>
-<span>    <span class="va">con</span>,</span>
-<span>    <span class="st">"MERGE INTO clinvar_decisions AS current</span></span>
-<span><span class="st">       USING clinvar_incoming AS incoming USING (record_key)</span></span>
-<span><span class="st">       WHEN MATCHED AND</span></span>
-<span><span class="st">         current.content_sha256 IS DISTINCT FROM incoming.content_sha256</span></span>
-<span><span class="st">         THEN UPDATE</span></span>
-<span><span class="st">       WHEN NOT MATCHED THEN INSERT"</span></span>
-<span>  <span class="op">)</span></span>
-<span>  <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbExecute.html" class="external-link">dbExecute</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"DELETE FROM clinvar_incoming"</span><span class="op">)</span></span>
-<span><span class="op">}</span>, author <span class="op">=</span> <span class="st">"RClinVarbitration"</span>,</span>
-<span>   commit_message <span class="op">=</span> <span class="st">"Publish ncbi-vcv-2026-07-02 default policy"</span>,</span>
-<span>   commit_extra_info <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span></span>
-<span>     <span class="st">"release_id=ncbi-vcv-2026-07-02"</span>,</span>
-<span>     <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"policy_version="</span>, <span class="va">receipt</span><span class="op">$</span><span class="va">policy_version</span><span class="op">)</span>,</span>
-<span>     sep <span class="op">=</span> <span class="st">";"</span></span>
-<span>   <span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p>The first <code>add_data_files(..., create = TRUE)</code> is a
-one-time staging-schema snapshot. For later releases, call
-<code>add_data_files("clinvar_incoming", next_path)</code> at the start
-of the publication transaction. The delete and merge leave
-byte-identical rows untouched and clear staging after use.</p>
-<p>Each committed publication is one DuckLake snapshot.
-<code>get_table_changes("clinvar_decisions", snapshot_id, snapshot_id)</code>
-returns its exact <code>insert</code>, <code>delete</code>,
-<code>update_preimage</code>, and <code>update_postimage</code> rows.
-Inspect the nested SCV and RCV receipts to explain a change. This is
-DuckLake’s native change feed, not a package-local delta API.</p>
-<p>Source and derived identities should not be conflated. A new
-arbitration profile can produce a new snapshot without pretending the
-NCBI source changed. A release comparison holds the profile fixed; a
-policy experiment holds the source snapshot fixed. RClinVarbitration
-therefore has no hard DuckLake dependency for local single-release
-analysis.</p>
+<span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">set_ducklake_connection</span><span class="op">(</span><span class="va">con</span><span class="op">)</span></span>
+<span><span class="fu">ducklake</span><span class="fu">::</span><span class="fu">attach_ducklake</span><span class="op">(</span><span class="st">"clinvar_lake"</span>, lake_path <span class="op">=</span> <span class="st">"clinvar-lake"</span><span class="op">)</span></span>
+<span><span class="va">publication</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/rclinvarbitration_publish_ducklake.html">rclinvarbitration_publish_ducklake</a></span><span class="op">(</span><span class="va">con</span>, <span class="va">tidy</span><span class="op">)</span></span></code></pre></div>
+<p>The <a href="https://github.com/RGenomicsETL/ducklake-r" class="external-link">RGenomicsETL
+<code>ducklake-r</code> fork</a> registers the Parquet in place. The
+publisher validates unique keys, uses persistent empty staging, and
+commits changed, new, and withdrawn decisions in one snapshot. Query
+that snapshot with <code>ducklake::get_table_changes()</code>. Compare
+releases with the policy fixed; compare policies with the source release
+fixed.</p>
 </div>
 <div class="section level2">
 <h2 id="variantstory-boundary">VariantStory boundary<a class="anchor" aria-label="anchor" href="#variantstory-boundary"></a>

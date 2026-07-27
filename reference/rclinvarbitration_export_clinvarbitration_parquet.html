@@ -64,7 +64,7 @@ Genomics ClinVarbitration's <code>clinvar_decisions.tsv</code>: <code>contig</co
 <span>  assembly <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"GRCh38"</span>, <span class="st">"GRCh37"</span><span class="op">)</span>,</span>
 <span>  profile_id <span class="op">=</span> <span class="st">"default"</span>,</span>
 <span>  submitter_exclusions <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">character</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>  schema <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"compatibility"</span>, <span class="st">"enhanced"</span><span class="op">)</span></span>
+<span>  schema <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"compatibility"</span>, <span class="st">"tidy"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -102,7 +102,7 @@ These exclusions are combined with any exclusions already stored for
 
 <dt id="arg-schema">schema<a class="anchor" aria-label="anchor" href="#arg-schema"></a></dt>
 <dd><p>Output schema: the upstream-compatible seven-column relation
-or the source-rich disease-decision relation.</p></dd>
+or the canonical scalar evidence relation.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -111,21 +111,17 @@ or the source-rich disease-decision relation.</p></dd>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p><code>schema = "enhanced"</code> writes one disease-specific decision per assembly
-locus and allele. It retains a stable <code>record_key</code>, a <code>content_sha256</code> over
-the complete row, policy identity, VCV and disease identifiers, decision
-counts and dates, and deterministically ordered nested SCV, RCV, and gene
-receipts. The source release receipt is returned by the function rather than
-copied into every row. A DuckLake merge can therefore skip rows whose
-content receipt is unchanged across source snapshots.</p>
-<p>SCV receipts are attached to their exact disease decision. RCV receipts are
-allele-level context and retain their own disease keys inside each nested
-item; the exporter does not claim that an RCV disease key is equivalent to
-an SCV key merely because both occur under the same allele.</p>
-<p>The compatibility source is the allele-level policy view. The enhanced
-source is the disease-level decision view. Both GRCh37 and GRCh38 are
-supported, and both retain every qualifying source locus, including distinct
-X/Y locations for one AlleleID.</p>
+    <p><code>schema = "tidy"</code> writes the canonical scalar <code>clinvar</code> relation.
+<code>record_kind</code> distinguishes variations, alleles, assembly locations, source
+assertions, conditions, genes, observations, citations, text, attributes,
+and policy decisions. Every row has its own stable <code>record_key</code>; repeated
+source elements are rows rather than lists or structs. <code>release_id</code> is kept
+in the release receipt rather than copied into every Parquet row.</p>
+<p>The compatibility source is the allele-level policy view joined through
+<code>clinvar_vcf</code>. Both GRCh37 and GRCh38 are supported, including distinct X/Y
+locations for one AlleleID. Primary <code>NC_</code> placements take precedence when
+present. An allele available only on alternate placements retains its exact
+sequence accession and is not mislabeled as a primary-chromosome VCF record.</p>
 <p>The file is schema-compatible with the upstream TSV/Hail decision resource,
 but is not claimed to be byte-for-byte equivalent: this package derives
 submissions and locations from VCV XML, whereas upstream uses ClinVar's

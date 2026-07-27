@@ -1,10 +1,12 @@
 # Download official ClinVar source files
 
 Downloads either the current ClinVar release or a named monthly archive
-from the NCBI HTTPS service. The VCV XML file is the normal input to
-[`rclinvarbitration_import_xml()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_import_xml.md).
-The two flat files are optional, validation-only inputs to
-[`rclinvarbitration_reproduce_clinvarbitration_parquet()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_reproduce_clinvarbitration_parquet.md).
+from the NCBI HTTPS service. The flat reports are the compact default
+input to
+[`rclinvarbitration_import_flat()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_import_flat.md).
+VCV XML feeds the same scalar `clinvar` table when an analysis also
+needs observations, citations, conditions, attributes, or attributable
+text that the flat reports do not contain.
 
 ## Usage
 

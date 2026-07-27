@@ -15,7 +15,7 @@ rclinvarbitration_export_clinvarbitration_parquet(
   assembly = c("GRCh38", "GRCh37"),
   profile_id = "default",
   submitter_exclusions = character(),
-  schema = c("compatibility", "enhanced")
+  schema = c("compatibility", "tidy")
 )
 ```
 
@@ -52,7 +52,7 @@ rclinvarbitration_export_clinvarbitration_parquet(
 - schema:
 
   Output schema: the upstream-compatible seven-column relation or the
-  source-rich disease-decision relation.
+  canonical scalar evidence relation.
 
 ## Value
 
@@ -60,25 +60,20 @@ A named list describing the written Parquet file, invisibly.
 
 ## Details
 
-`schema = "enhanced"` writes one disease-specific decision per assembly
-locus and allele. It retains a stable `record_key`, a `content_sha256`
-over the complete row, policy identity, VCV and disease identifiers,
-decision counts and dates, and deterministically ordered nested SCV,
-RCV, and gene receipts. The source release receipt is returned by the
-function rather than copied into every row. A DuckLake merge can
-therefore skip rows whose content receipt is unchanged across source
-snapshots.
+`schema = "tidy"` writes the canonical scalar `clinvar` relation.
+`record_kind` distinguishes variations, alleles, assembly locations,
+source assertions, conditions, genes, observations, citations, text,
+attributes, and policy decisions. Every row has its own stable
+`record_key`; repeated source elements are rows rather than lists or
+structs. `release_id` is kept in the release receipt rather than copied
+into every Parquet row.
 
-SCV receipts are attached to their exact disease decision. RCV receipts
-are allele-level context and retain their own disease keys inside each
-nested item; the exporter does not claim that an RCV disease key is
-equivalent to an SCV key merely because both occur under the same
-allele.
-
-The compatibility source is the allele-level policy view. The enhanced
-source is the disease-level decision view. Both GRCh37 and GRCh38 are
-supported, and both retain every qualifying source locus, including
-distinct X/Y locations for one AlleleID.
+The compatibility source is the allele-level policy view joined through
+`clinvar_vcf`. Both GRCh37 and GRCh38 are supported, including distinct
+X/Y locations for one AlleleID. Primary `NC_` placements take precedence
+when present. An allele available only on alternate placements retains
+its exact sequence accession and is not mislabeled as a
+primary-chromosome VCF record.
 
 The file is schema-compatible with the upstream TSV/Hail decision
 resource, but is not claimed to be byte-for-byte equivalent: this

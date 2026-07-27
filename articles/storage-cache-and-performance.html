@@ -90,8 +90,7 @@ archive such as <code>"2026-03"</code>.</p>
 flat files. A matching local file is reused. A stale or corrupt file is
 replaced only after a complete temporary download passes its checksum.
 NCBI does not publish adjacent MD5 sidecars for archived flat files, so
-those validation-only files are reused by name unless
-<code>overwrite = TRUE</code>.</p>
+those files are reused by name unless <code>overwrite = TRUE</code>.</p>
 <p><code>latest</code> is a mutable remote alias. For an auditable run,
 retain the returned URL and MD5 and assign an immutable
 <code>release_id</code>; selecting an explicit monthly archive is
@@ -114,11 +113,11 @@ code and not a cache that silently falls back to another DuckDB ABI.</p>
 <h3 id="persistent-relational-release-store">Persistent relational release store<a class="anchor" aria-label="anchor" href="#persistent-relational-release-store"></a>
 </h3>
 <p>A file-backed DuckDB database is the durable, queryable conversion of
-the XML. After import, ordinary queries read typed relations and never
-rescan or decompress the XML. Multiple <code>release_id</code> values
-may coexist in one database. The <code>clinvar_releases</code> row
-records completion, source path, optional source URL and MD5, byte size,
-and import time.</p>
+either the flat reports or VCV XML. Both import paths write one scalar
+<code>clinvar</code> table; ordinary queries do not rescan or decompress
+the source files. Multiple <code>release_id</code> values may coexist in
+one database. The <code>clinvar_releases</code> row records completion
+and source identity.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://dbi.r-dbi.org" class="external-link">DBI</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://r.duckdb.org/" class="external-link">duckdb</a></span><span class="op">)</span></span>
@@ -149,26 +148,27 @@ path drops that R attribute; <code>source_url</code> and
 <p>The conversion has four phases:</p>
 <pre class="text"><code>XML.GZ forward scan
   -&gt; temporary compact entity relation
-  -&gt; typed public relations
+  -&gt; scalar clinvar rows, appended in record-kind blocks
   -&gt; clinvar_releases completion marker
   -&gt; temporary relation dropped</code></pre>
 <p>The native table function performs one forward libxml2 scan and
-streaming gzip decompression. It emits one compact JSON-backed row per
-selected entity. SQL then projects those rows into the typed relations
-without an EAV pivot, XML DOM, or R data-frame copy.</p>
-<p>The staging relation is a durable DuckDB table during conversion so
-its size is bounded by disk rather than R memory. It is dropped after
-projection, but DuckDB keeps the released blocks inside the database
-file for reuse. Therefore the physical file records the import
-high-water mark and can be substantially larger than its currently used
-blocks. This is reusable database capacity, not a second live copy of
-the XML after import.</p>
-<p>Configure the database and DuckDB <code>temp_directory</code> on
-storage with substantial headroom. If the smallest possible
-single-release artifact matters more than fast reuse, publish selected
-relations to a fresh DuckDB database, Parquet, or DuckLake after
-validation; that compaction/publication time is separate from the import
-benchmark below.</p>
+streaming gzip decompression. It emits one compact temporary row per
+selected entity. SQL projects that staging row into the scalar columns
+of <code>clinvar</code> without an EAV pivot, XML DOM, or R data-frame
+copy. The temporary parser payload is not part of the stored or exported
+schema.</p>
+<p>The staging relation is temporary. DuckDB may spill it to
+<code>temp_directory</code> under the configured memory limit, but its
+high-water mark is not retained as free blocks in the durable ClinVar
+database. Configure both the database and temporary directory with
+enough headroom for the conversion.</p>
+<p>The flat importer has a different bounded execution plan. It projects
+one <code>record_kind</code> at a time into the same
+<code>clinvar</code> table. This releases the large
+coordinate-deduplication, submission, and policy states between
+projections instead of keeping every branch of one large union live
+concurrently. <code>record_key</code>, not physical insertion order, is
+the row identity.</p>
 <p>Public relations commit independently so one enormous transaction is
 not held for the complete release. The release-catalogue marker is
 inserted only after all projections succeed. An R error removes partial
@@ -186,20 +186,19 @@ success.</p>
 <div class="section level2">
 <h2 id="what-remains-virtual">What remains virtual?<a class="anchor" aria-label="anchor" href="#what-remains-virtual"></a>
 </h2>
-<p>Views such as <code>clinvar_disease_submissions</code>,
-<code>clinvar_policy_decisions</code>,
+<p>Compatibility relations such as <code>clinvar_scv_assertions</code>
+and derived relations such as <code>clinvar_policy_decisions</code>,
 <code>clinvar_gene_summaries</code>, and
-<code>clinvar_semantic_documents</code> are SQL definitions, not
-automatically refreshed materialized caches. DuckDB plans them against
-the stored source relations on each query.</p>
+<code>clinvar_semantic_documents</code> are SQL views. DuckDB plans them
+against the one stored <code>clinvar</code> table on each query.</p>
 <p>For repeated delivery workloads, explicitly materialize a release-
 and policy-versioned result to Parquet, a DuckDB table, or DuckLake. Do
 not replace the auditable source tables with only the final
 classification label.</p>
-<p>The package deliberately avoids ART indexes on release-scale tables.
-Their build and maintenance memory cost is undesirable during ingestion;
-analytical filters, scans, joins, Parquet statistics, and downstream
-materializations are the intended execution path.</p>
+<p>The package deliberately avoids ART indexes on the release-scale
+table. Their build and maintenance memory cost is undesirable during
+ingestion; analytical filters, scans, joins, Parquet statistics, and
+downstream materializations are the intended execution path.</p>
 <p>DuckDB’s buffer manager may retain recently read blocks in process
 memory and spill intermediates to <code>temp_directory</code>. That
 runtime buffer cache is managed by DuckDB and disappears when the
@@ -207,77 +206,101 @@ process exits. It is different from the durable database and the NCBI
 download cache.</p>
 </div>
 <div class="section level2">
-<h2 id="measured-complete-release-conversion">Measured complete-release conversion<a class="anchor" aria-label="anchor" href="#measured-complete-release-conversion"></a>
+<h2 id="measured-complete-release-conversions">Measured complete-release conversions<a class="anchor" aria-label="anchor" href="#measured-complete-release-conversions"></a>
 </h2>
-<p>A complete NCBI VCV release was measured, rather than extrapolated
-from the one-record fixture. The committed machine-readable receipt is
-<code>inst/benchmarks/full-release-2026-07-02.dcf</code>, and
-<code>tools/benchmark_full_release.R</code> reproduces the
-measurement.</p>
+<p>The two official source products serve different purposes and are
+measured separately. The committed receipts are
+<code>inst/benchmarks/full-flat-release-2026-03.dcf</code> and
+<code>inst/benchmarks/full-release-2026-07-02.dcf</code>.</p>
 <table class="table">
+<colgroup>
+<col width="39%">
+<col width="31%">
+<col width="28%">
+</colgroup>
 <thead><tr class="header">
 <th align="left">Measurement</th>
-<th align="right">Result</th>
+<th align="right">March 2026 flat reports</th>
+<th align="right">2 July 2026 VCV XML</th>
 </tr></thead>
 <tbody>
 <tr class="odd">
-<td align="left">NCBI release</td>
-<td align="right">2026-07-02</td>
-</tr>
-<tr class="even">
-<td align="left">Source MD5</td>
-<td align="right"><code>2e7e76ebbf668910b8688cc5e4284c1b</code></td>
-</tr>
-<tr class="odd">
-<td align="left">Compressed XML</td>
-<td align="right">5,824,540,370 bytes (5.42 GiB)</td>
+<td align="left">Compressed source</td>
+<td align="right">807,089,080 bytes</td>
+<td align="right">5,824,540,370 bytes</td>
 </tr>
 <tr class="even">
 <td align="left">Import wall time</td>
-<td align="right">1,312.493 seconds (21 min 52.5 sec)</td>
+<td align="right">220.279 sec</td>
+<td align="right">1,712.347 sec</td>
 </tr>
 <tr class="odd">
+<td align="left">Unique stored facts</td>
+<td align="right">38,596,056</td>
+<td align="right">109,372,736</td>
+</tr>
+<tr class="even">
 <td align="left">Durable DuckDB file</td>
-<td align="right">23,978,586,112 bytes (22.33 GiB)</td>
+<td align="right">5,348,274,176 bytes</td>
+<td align="right">9,378,738,176 bytes</td>
+</tr>
+<tr class="odd">
+<td align="left">Bytes per stored fact</td>
+<td align="right">138.57</td>
+<td align="right">85.75</td>
 </tr>
 <tr class="even">
 <td align="left">Peak process RSS</td>
-<td align="right">3,657,296 KiB (3.49 GiB)</td>
+<td align="right">10,695,620 KiB</td>
+<td align="right">10,593,308 KiB</td>
 </tr>
 <tr class="odd">
-<td align="left">VCV / allele rows</td>
-<td align="right">4,531,457 / 4,535,897</td>
+<td align="left">GRCh38 raw / VCF locations</td>
+<td align="right">4,410,536 / 4,389,459</td>
+<td align="right">4,465,523 / 4,444,013</td>
 </tr>
 <tr class="even">
-<td align="left">RCV / SCV rows</td>
-<td align="right">5,966,166 / 6,905,758</td>
+<td align="left">GRCh37 raw / VCF locations</td>
+<td align="right">4,463,601 / 4,389,810</td>
+<td align="right">4,518,795 / 4,444,344</td>
 </tr>
 <tr class="odd">
-<td align="left">Condition / text rows</td>
-<td align="right">13,815,000 / 30,649,367</td>
+<td align="left">Duplicate <code>record_key</code> values</td>
+<td align="right">0</td>
+<td align="right">0</td>
+</tr>
+<tr class="even">
+<td align="left">Nested durable columns</td>
+<td align="right">0</td>
+<td align="right">0</td>
 </tr>
 </tbody>
 </table>
-<p>The run used DuckDB 1.5.3 on Linux, an Intel Core i5-13500, two
-DuckDB threads, a 2 GB DuckDB memory limit, and
+<p>The flat total includes 4,124,600 stored policy decisions. XML stores
+source facts only; its 4,273,846 derived allele decisions remain virtual
+until an explicit publication. A tidy XML publication with those
+decisions therefore contains 113,646,582 rows. That cardinality is not
+itself a DuckDB concern. Keeping GRCh37 and GRCh38 coordinates, exact
+sequence accessions, alternate placements, separate X/Y placements, and
+source locations without usable VCF tuples is the more important
+property.</p>
+<p>Both runs used DuckDB 1.5.3 on Linux, an 13th Gen Intel(R) Core(TM)
+i5-13500, 4 DuckDB threads, a 8GB DuckDB memory limit, and
 <code>preserve_insertion_order = false</code>. A DuckDB memory limit is
-not a process RSS limit: native parser, compression, allocator, and
-other process memory remain outside that configured buffer budget.</p>
-<p>The timed scope is <code><a href="../reference/rclinvarbitration_import_xml.html">rclinvarbitration_import_xml()</a></code> only.
-Connection creation, extension loading, schema initialization, final
-<code>CHECKPOINT</code>, and process startup are excluded. The complete
-process including those operations took 21 minutes 53.3 seconds.</p>
-<p>At the final checkpoint, 29,874 of 91,471 256-KiB blocks were used
-and 61,597 were free. Thus the 22.33-GiB physical file contained about
-7.29 GiB of live blocks and 15.04 GiB reserved for reuse after staging
-was dropped. Report the physical file size for disk planning; report
-used/free blocks as well when explaining logical storage.</p>
-<p>Runtime and compression vary with DuckDB version, CPU, storage,
-filesystem cache, and configuration; this result is an observed
-reference, not a universal guarantee.</p>
+not a process RSS limit: native parsing, compression, allocators, and
+other process memory remain outside the configured buffer budget.</p>
+<p>The XML measurement reused database blocks released by an immediately
+preceding failed policy-materialization experiment, and both runs used a
+warm filesystem cache. The final XML checkpoint had 35,417 live and 360
+free 256-KiB blocks. These are observed engineering measurements, not
+cold-cache or cross-machine guarantees.</p>
+<p>The timed scope is the import function. Connection creation, package
+loading, final <code>CHECKPOINT</code>, and process startup are
+excluded. Complete process times were 225.11 seconds for the flat
+reports and 1,715.47 seconds for XML.</p>
 <p>Run the benchmark with:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="va">CLINVAR_DUCKDB_MEMORY_LIMIT</span><span class="op">=</span>2GB <span class="dt">\</span></span>
-<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="va">CLINVAR_DUCKDB_THREADS</span><span class="op">=</span>2 <span class="dt">\</span></span>
+<div class="sourceCode" id="cb4"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="va">CLINVAR_DUCKDB_MEMORY_LIMIT</span><span class="op">=</span>8GB <span class="dt">\</span></span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="va">CLINVAR_DUCKDB_THREADS</span><span class="op">=</span>4 <span class="dt">\</span></span>
 <span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a><span class="ex">Rscript</span> tools/benchmark_full_release.R <span class="dt">\</span></span>
 <span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>  ClinVarVCVRelease_2026-03.xml.gz <span class="dt">\</span></span>
 <span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>  clinvar-2026-03.duckdb <span class="dt">\</span></span>
