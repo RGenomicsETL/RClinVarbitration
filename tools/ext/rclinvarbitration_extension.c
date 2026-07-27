@@ -1202,6 +1202,8 @@ static bool rclinvar_register_xml_entities(duckdb_connection connection) {
     return status == DuckDBSuccess;
 }
 
+#include "rclinvarbitration_pubmed.c"
+
 DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection,
                             duckdb_extension_info info,
                             struct duckdb_extension_access *access) {
@@ -1212,6 +1214,10 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection,
     }
     if (!rclinvar_register_xml_entities(connection)) {
         access->set_error(info, "failed to register clinvar_xml_entities()");
+        return false;
+    }
+    if (!rpubmed_register_xml_rows(connection)) {
+        access->set_error(info, "failed to register rclinvarbitration_pubmed_xml_rows()");
         return false;
     }
     return true;

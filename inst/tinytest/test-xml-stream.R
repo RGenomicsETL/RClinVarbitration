@@ -293,6 +293,7 @@ tidy <- DBI::dbGetQuery(
   )
 )
 expect_equal(nrow(tidy), tidy_export$rows)
+expect_true(all(tidy$release_id == "fixture-vcv"))
 expect_true(all(nzchar(tidy$record_key)))
 expect_true(all(tidy$vcv_accession == "VCV000091629"))
 expect_equal(length(unique(tidy$record_key)), nrow(tidy))
@@ -301,11 +302,19 @@ expect_equal(
   names(kind_counts),
   c(
     "allele", "attribute", "citation", "citation_identifier", "condition",
-    "condition_name", "decision", "gene", "location", "observation",
-    "rcv_assertion", "scv_assertion", "text", "variation", "xref"
+    "condition_name", "decision", "disease_decision", "gene", "location",
+    "observation", "rcv_assertion", "scv_assertion", "text", "variation", "xref"
   )
 )
-expect_equal(as.integer(kind_counts), c(1, 15, 14, 12, 10, 3, 1, 1, 1, 6, 4, 6, 4, 1, 7))
+expect_equal(as.integer(kind_counts), c(1, 15, 14, 12, 10, 3, 1, 5, 1, 1, 6, 4, 6, 4, 1, 7))
+disease_decisions <- tidy[tidy$record_kind == "disease_decision", ]
+expect_equal(nrow(disease_decisions), 5L)
+expect_true(all(nzchar(disease_decisions$context_id)))
+expect_true(all(nzchar(disease_decisions$database_name)))
+expect_true(all(nzchar(disease_decisions$database_id)))
+expect_true(all(nzchar(disease_decisions$preferred_name)))
+expect_equal(unique(disease_decisions$policy_version), rclinvarbitration_policy_version())
+expect_equal(unique(disease_decisions$profile_id), "default")
 expect_true(all(nzchar(tidy$accession[tidy$record_kind == "rcv_assertion"])))
 expect_true(all(nzchar(tidy$accession[tidy$record_kind == "scv_assertion"])))
 expect_equal(

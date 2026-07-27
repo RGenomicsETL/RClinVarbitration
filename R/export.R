@@ -58,13 +58,13 @@ rclinvarbitration_compatibility_select_sql <- function(
 rclinvarbitration_tidy_select_sql <- function(
     release_sql, assembly_sql, profile_sql) {
   paste0(
-    "WITH source_rows AS (SELECT * EXCLUDE (release_id) FROM clinvar ",
+    "WITH source_rows AS (SELECT * FROM clinvar ",
     "WHERE release_id = ", release_sql, " AND record_kind <> 'decision' ",
     "AND (record_kind <> 'location' OR assembly = ", assembly_sql, ")), ",
-    "stored_decision_rows AS (SELECT * EXCLUDE (release_id) FROM clinvar ",
+    "stored_decision_rows AS (SELECT * FROM clinvar ",
     "WHERE release_id = ", release_sql, " AND record_kind = 'decision' ",
     "AND profile_id = ", profile_sql, "), computed_decision_rows AS (SELECT ",
-    "'decision' AS record_kind, ",
+    release_sql, " AS release_id, 'decision' AS record_kind, ",
     "'decision|' || p.vcv_accession || '|' || cast(p.allele_id AS VARCHAR) ",
     "|| '|' || p.profile_id AS record_key, a.record_ordinal, ",
     "a.record_ordinal AS entity_ordinal, p.vcv_accession, ",
@@ -78,9 +78,28 @@ rclinvarbitration_tidy_select_sql <- function(
     "AND a.allele_id IS NOT DISTINCT FROM p.allele_id ",
     "AND a.parent_allele_entity_id IS NULL WHERE p.release_id = ", release_sql,
     " AND p.profile_id = ", profile_sql, " AND NOT EXISTS (SELECT 1 FROM ",
-    "stored_decision_rows d WHERE d.allele_id IS NOT DISTINCT FROM p.allele_id)) ",
+    "stored_decision_rows d WHERE d.allele_id IS NOT DISTINCT FROM p.allele_id)), ",
+    "computed_disease_decision_rows AS (SELECT ", release_sql,
+    " AS release_id, 'disease_decision' AS record_kind, 'disease_decision|' || ",
+    "p.vcv_accession || '|' || coalesce(cast(p.allele_id AS VARCHAR), '') || '|' || ",
+    "p.disease_key || '|' || p.profile_id AS record_key, ",
+    "coalesce(a.record_ordinal, 0) AS record_ordinal, ",
+    "coalesce(a.record_ordinal, 0) AS entity_ordinal, p.vcv_accession, ",
+    "'disease_decision:' || p.vcv_accession || ':' || ",
+    "coalesce(cast(p.allele_id AS VARCHAR), '') || ':' || p.disease_key || ':' || ",
+    "p.profile_id AS entity_id, 'allele' AS parent_type, a.allele_entity_id AS parent_id, ",
+    "p.variation_id, p.allele_id, p.policy_classification AS classification, ",
+    "p.latest_date_last_evaluated AS date_last_evaluated, p.disease_database AS database_name, ",
+    "p.disease_identifier AS database_id, p.disease_name AS preferred_name, ",
+    "'disease_decision' AS context_type, p.disease_key AS context_id, ",
+    "p.policy_version, p.profile_id, p.gold_stars FROM clinvar_policy_decisions p ",
+    "LEFT JOIN clinvar_alleles a ON a.release_id = p.release_id AND ",
+    "a.vcv_accession = p.vcv_accession AND a.allele_id IS NOT DISTINCT FROM p.allele_id ",
+    "AND a.parent_allele_entity_id IS NULL WHERE p.release_id = ", release_sql,
+    " AND p.profile_id = ", profile_sql, ") ",
     "SELECT * FROM source_rows UNION ALL BY NAME SELECT * FROM stored_decision_rows ",
-    "UNION ALL BY NAME SELECT * FROM computed_decision_rows"
+    "UNION ALL BY NAME SELECT * FROM computed_decision_rows ",
+    "UNION ALL BY NAME SELECT * FROM computed_disease_decision_rows"
   )
 }
 
@@ -103,9 +122,10 @@ rclinvarbitration_export_tidy_parquet <- function(
 #' `schema = "tidy"` writes the canonical scalar `clinvar` relation.
 #' `record_kind` distinguishes variations, alleles, assembly locations, source
 #' assertions, conditions, genes, observations, citations, text, attributes,
-#' and policy decisions. Every row has its own stable `record_key`; repeated
-#' source elements are rows rather than lists or structs. `release_id` is kept
-#' in the release receipt rather than copied into every Parquet row.
+#' allele policy decisions, and disease-level `disease_decision` policy rows.
+#' Every row has its own stable `record_key`; repeated source elements are rows
+#' rather than lists or structs. `release_id` is a
+#' required Parquet column, so a reopened export retains its source identity.
 #'
 #' The compatibility source is the allele-level policy view joined through
 #' `clinvar_vcf`. Both GRCh37 and GRCh38 are supported, including distinct X/Y

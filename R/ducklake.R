@@ -21,6 +21,10 @@ rclinvarbitration_ducklake_export <- function(export) {
   if (!identical(export$schema, "tidy")) {
     stop("Only `schema = \"tidy\"` exports can be published.", call. = FALSE)
   }
+  if (!is.character(export$release_id) || length(export$release_id) != 1L ||
+      is.na(export$release_id) || !nzchar(export$release_id)) {
+    stop("`export$release_id` must be a non-empty character scalar.", call. = FALSE)
+  }
   if (!is.character(export$path) || length(export$path) != 1L ||
       is.na(export$path) || !file.exists(export$path)) {
     stop("The tidy Parquet file recorded by `export` does not exist.", call. = FALSE)
@@ -36,7 +40,8 @@ rclinvarbitration_ducklake_validate_parquet <- function(con, export) {
     paste0("DESCRIBE SELECT * FROM read_parquet(", path_sql, ")")
   )$column_name
   required <- c(
-    "record_kind", "record_key", "assembly", "policy_version", "profile_id"
+    "release_id", "record_kind", "record_key", "assembly", "policy_version",
+    "profile_id"
   )
   missing <- setdiff(required, columns)
   if (length(missing)) {
@@ -53,6 +58,8 @@ rclinvarbitration_ducklake_validate_parquet <- function(con, export) {
       "SELECT count(*) AS row_count, ",
       "count(DISTINCT record_key) AS key_count, ",
       "count(*) FILTER (WHERE record_key IS NULL OR record_key = '') AS bad_keys, ",
+      "count(*) FILTER (WHERE release_id IS DISTINCT FROM ",
+      rclinvarbitration_sql_string(export$release_id), ") AS wrong_release, ",
       "count(*) FILTER (WHERE assembly IS NOT NULL AND assembly NOT IN (",
       paste(
         rclinvarbitration_sql_string(export$assembly), collapse = ", "
@@ -74,11 +81,11 @@ rclinvarbitration_ducklake_validate_parquet <- function(con, export) {
       summary$bad_keys[[1L]] != 0) {
     stop("Every tidy row must have one unique, non-empty `record_key`.", call. = FALSE)
   }
-  if (summary$wrong_assembly[[1L]] != 0 ||
+  if (summary$wrong_release[[1L]] != 0 || summary$wrong_assembly[[1L]] != 0 ||
       summary$wrong_policy[[1L]] != 0 ||
       summary$wrong_profile[[1L]] != 0) {
     stop(
-      "Parquet assembly, policy version, or profile does not match `export`.",
+      "Parquet release identity, assembly, policy version, or profile does not match `export`.",
       call. = FALSE
     )
   }

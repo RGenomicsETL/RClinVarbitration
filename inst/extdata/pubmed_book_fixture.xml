@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PubmedArticleSet>
+  <PubmedBookArticle>
+    <BookDocument>
+      <PMID Version="1">3001</PMID>
+      <ArticleTitle>PubMed book article</ArticleTitle>
+      <Abstract><AbstractText Label="SUMMARY">Book abstract.</AbstractText></Abstract>
+    </BookDocument>
+    <PubmedData>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">3001</ArticleId>
+        <ArticleId IdType="doi">10.1000/book</ArticleId>
+      </ArticleIdList>
+    </PubmedData>
+  </PubmedBookArticle>
+</PubmedArticleSet>

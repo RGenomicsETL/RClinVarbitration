@@ -112,12 +112,15 @@ rclinvarbitration_extension_path <- function(
   normalizePath(path, mustWork = TRUE)
 }
 
-#' Enable native ClinVar XML scanning on a DuckDB connection
+#' Enable native ClinVar and PubMed XML scanning on a DuckDB connection
 #'
 #' Loads the package-owned `rclinvarbitration` extension. Its native
-#' `clinvar_xml_entities(path)` table function and `rclinvar_json_field()`
-#' scalar are the compact, ClinVar-specific one-pass staging surface used by
-#' [rclinvarbitration_import_xml()]. The connection must have been created with
+#' `clinvar_xml_entities(path)` and `rclinvarbitration_pubmed_xml_rows(path)`
+#' table functions are concrete one-pass staging surfaces for
+#' [rclinvarbitration_import_xml()] and
+#' `rclinvarbitration_import_pubmed()`. `rclinvar_json_field()` remains the
+#' compact ClinVar field scalar. The
+#' connection must have been created with
 #' `duckdb::duckdb(config = list(allow_unsigned_extensions = "true"))`, as for
 #' any locally built DuckDB extension.
 #'

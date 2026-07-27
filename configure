@@ -24,10 +24,11 @@ VERSION=`awk -F': *' '/^Version:/ {print $2; exit}' "$ROOT/DESCRIPTION"`
 CAPI_ROOT="$ROOT/tools/ext/duckdb_capi"
 VERSIONS_FILE="$CAPI_ROOT/versions.txt"
 SOURCE="$ROOT/tools/ext/rclinvarbitration_extension.c"
+PUBMED_SOURCE="$ROOT/tools/ext/rclinvarbitration_pubmed.c"
 METADATA="$ROOT/tools/append_extension_metadata.R"
 BUILD_ROOT="$ROOT/inst/rclinvarbitration_extension/build"
 
-for file in "$VERSIONS_FILE" "$SOURCE" "$METADATA"; do
+for file in "$VERSIONS_FILE" "$SOURCE" "$PUBMED_SOURCE" "$METADATA"; do
   if [ ! -f "$file" ]; then
     echo "ERROR: required native extension file is missing: $file" >&2
     exit 1

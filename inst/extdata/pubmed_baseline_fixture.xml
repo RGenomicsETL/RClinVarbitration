@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation Status="MEDLINE" Owner="NLM">
+      <PMID Version="1">1001</PMID>
+      <Article>
+        <Journal>
+          <JournalIssue CitedMedium="Print">
+            <PubDate><Year>2020</Year><Month>Jan</Month><Day>02</Day></PubDate>
+          </JournalIssue>
+        </Journal>
+        <ArticleTitle>Baseline article title</ArticleTitle>
+        <Abstract>
+          <AbstractText Label="BACKGROUND">Baseline background.</AbstractText>
+          <AbstractText Label="METHODS">Baseline methods.</AbstractText>
+        </Abstract>
+      </Article>
+      <MeshHeadingList>
+        <MeshHeading><DescriptorName UI="D000001">Calcimycin</DescriptorName></MeshHeading>
+      </MeshHeadingList>
+      <KeywordList Owner="NOTNLM"><Keyword>baseline keyword</Keyword></KeywordList>
+    </MedlineCitation>
+    <PubmedData>
+      <History>
+        <PubMedPubDate PubStatus="pubmed"><Year>2020</Year><Month>Jan</Month><Day>03</Day></PubMedPubDate>
+      </History>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">1001</ArticleId>
+        <ArticleId IdType="doi">10.1000/baseline</ArticleId>
+        <ArticleId IdType="pmc">PMC1001</ArticleId>
+      </ArticleIdList>
+      <ReferenceList>
+        <Reference>
+          <Citation>A cited article</Citation>
+          <ArticleIdList>
+            <ArticleId IdType="pubmed">2001</ArticleId>
+            <ArticleId IdType="doi">10.1000/cited</ArticleId>
+          </ArticleIdList>
+        </Reference>
+      </ReferenceList>
+    </PubmedData>
+  </PubmedArticle>
+</PubmedArticleSet>

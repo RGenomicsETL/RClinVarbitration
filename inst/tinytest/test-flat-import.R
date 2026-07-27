@@ -168,7 +168,17 @@ parquet_columns <- DBI::dbGetQuery(
     DBI::dbQuoteString(con, parquet_path), ")"
   )
 )$column_name
-expect_false("release_id" %in% parquet_columns)
+expect_true("release_id" %in% parquet_columns)
+expect_equal(
+  DBI::dbGetQuery(
+    con,
+    paste0(
+      "SELECT DISTINCT release_id FROM read_parquet(",
+      DBI::dbQuoteString(con, parquet_path), ")"
+    )
+  )$release_id,
+  "flat-fixture"
+)
 types <- DBI::dbGetQuery(con, "DESCRIBE clinvar")$column_type
 expect_false(any(grepl("STRUCT|\\[\\]$", types)))
 expect_error(
@@ -238,3 +248,19 @@ expect_equal(
 )
 DBI::dbDisconnect(duplicate_con, shutdown = TRUE)
 unlink(duplicate_variant_path)
+
+# A named policy profile is an import boundary: an unknown profile cannot
+# create source rows, release markers, or the requested Parquet output.
+profile_con <- DBI::dbConnect(duckdb::duckdb())
+profile_parquet <- tempfile("rclinvarbitration-unconfigured-", fileext = ".parquet")
+expect_error(
+  rclinvarbitration_import_flat(
+    profile_con, submission_path, variant_path, "unconfigured-profile",
+    parquet_path = profile_parquet, profile_id = "not-configured"
+  ),
+  "not a configured"
+)
+expect_false(file.exists(profile_parquet))
+expect_equal(DBI::dbGetQuery(profile_con, "SELECT count(*) AS n FROM clinvar")$n, 0)
+expect_equal(DBI::dbGetQuery(profile_con, "SELECT count(*) AS n FROM clinvar_releases")$n, 0)
+DBI::dbDisconnect(profile_con, shutdown = TRUE)

@@ -11,8 +11,14 @@ A named character vector of SQL statements.
 }
 \description{
 Returns DuckDB DDL for one scalar ClinVar fact table plus compatibility
-views. Every XML entity is one \code{clinvar} row identified by \code{record_kind};
-repeated conditions, observations, citations, names, and text are additional
-rows rather than nested values or Cartesian products. The release catalogue
-and small policy configuration tables remain separate.
+views and append-only, source-versioned PubMed relations. Every ClinVar XML
+entity is one \code{clinvar} row identified by \code{record_kind}; repeated conditions,
+observations, citations, names, and text are additional rows rather than
+nested values or Cartesian products. PubMed current and as-of relations use
+typed source order without deleting historical facts; read-only
+\verb{pubmed_literature_*} views project all source versions for direct semantic
+consumers. Literature sections normalize article titles to \code{section = "title"}
+and abstracts to \code{section = "abstract"}, retaining structured labels in
+\code{subsection}. The release catalogue and small policy configuration tables
+remain separate.
 }

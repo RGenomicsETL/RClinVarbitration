@@ -1,10 +1,16 @@
 #' ClinVar relational schema SQL
 #'
 #' Returns DuckDB DDL for one scalar ClinVar fact table plus compatibility
-#' views. Every XML entity is one `clinvar` row identified by `record_kind`;
-#' repeated conditions, observations, citations, names, and text are additional
-#' rows rather than nested values or Cartesian products. The release catalogue
-#' and small policy configuration tables remain separate.
+#' views and append-only, source-versioned PubMed relations. Every ClinVar XML
+#' entity is one `clinvar` row identified by `record_kind`; repeated conditions,
+#' observations, citations, names, and text are additional rows rather than
+#' nested values or Cartesian products. PubMed current and as-of relations use
+#' typed source order without deleting historical facts; read-only
+#' `pubmed_literature_*` views project all source versions for direct semantic
+#' consumers. Literature sections normalize article titles to `section = "title"`
+#' and abstracts to `section = "abstract"`, retaining structured labels in
+#' `subsection`. The release catalogue and small policy configuration tables
+#' remain separate.
 #'
 #' @return A named character vector of SQL statements.
 #' @export
@@ -23,6 +29,47 @@ rclinvarbitration_schema_sql <- function() {
     release_source_kind = "ALTER TABLE clinvar_releases ADD COLUMN IF NOT EXISTS source_kind TEXT",
     release_submission_path = "ALTER TABLE clinvar_releases ADD COLUMN IF NOT EXISTS submission_path TEXT",
     release_variant_path = "ALTER TABLE clinvar_releases ADD COLUMN IF NOT EXISTS variant_path TEXT",
+    pubmed_sources = paste(
+      "CREATE TABLE IF NOT EXISTS pubmed_sources (",
+      "source_id TEXT PRIMARY KEY, source_ordinal UBIGINT NOT NULL UNIQUE,",
+      "source_provider TEXT NOT NULL, source_path TEXT NOT NULL, source_kind TEXT NOT NULL,",
+      "source_bytes UBIGINT NOT NULL, source_applied_at TIMESTAMP NOT NULL DEFAULT current_timestamp)"
+    ),
+    pubmed_source_provider = "ALTER TABLE pubmed_sources ADD COLUMN IF NOT EXISTS source_provider TEXT",
+    pubmed_source_ordinal = "ALTER TABLE pubmed_sources ADD COLUMN IF NOT EXISTS source_ordinal UBIGINT",
+    pubmed_source_applied_at = "ALTER TABLE pubmed_sources ADD COLUMN IF NOT EXISTS source_applied_at TIMESTAMP",
+    pubmed_articles = paste(
+      "CREATE TABLE IF NOT EXISTS pubmed_articles (",
+      "source_id TEXT NOT NULL, pmid TEXT NOT NULL, source_kind TEXT NOT NULL,",
+      "source_record_ordinal UBIGINT NOT NULL, article_title TEXT, publication_date TEXT,",
+      "source_date TEXT, is_deleted BOOLEAN NOT NULL, PRIMARY KEY (source_id, pmid))"
+    ),
+    pubmed_abstracts = paste(
+      "CREATE TABLE IF NOT EXISTS pubmed_abstracts (",
+      "source_id TEXT NOT NULL, pmid TEXT NOT NULL, source_record_ordinal UBIGINT NOT NULL,",
+      "source_entity_ordinal UBIGINT NOT NULL, section TEXT, text TEXT NOT NULL,",
+      "PRIMARY KEY (source_id, pmid, source_entity_ordinal))"
+    ),
+    pubmed_article_identifiers = paste(
+      "CREATE TABLE IF NOT EXISTS pubmed_article_identifiers (",
+      "source_id TEXT NOT NULL, pmid TEXT NOT NULL, source_record_ordinal UBIGINT NOT NULL,",
+      "source_entity_ordinal UBIGINT NOT NULL, identifier_role TEXT NOT NULL,",
+      "identifier_source TEXT, identifier TEXT NOT NULL, citation_ordinal UBIGINT,",
+      "PRIMARY KEY (source_id, pmid, source_entity_ordinal))"
+    ),
+    pubmed_mesh_terms = paste(
+      "CREATE TABLE IF NOT EXISTS pubmed_mesh_terms (",
+      "source_id TEXT NOT NULL, pmid TEXT NOT NULL, source_record_ordinal UBIGINT NOT NULL,",
+      "source_entity_ordinal UBIGINT NOT NULL, mesh_type TEXT NOT NULL,",
+      "mesh_ui TEXT, term TEXT NOT NULL, PRIMARY KEY (source_id, pmid, source_entity_ordinal))"
+    ),
+    pubmed_keywords = paste(
+      "CREATE TABLE IF NOT EXISTS pubmed_keywords (",
+      "source_id TEXT NOT NULL, pmid TEXT NOT NULL, source_record_ordinal UBIGINT NOT NULL,",
+      "source_entity_ordinal UBIGINT NOT NULL, keyword TEXT NOT NULL,",
+      "PRIMARY KEY (source_id, pmid, source_entity_ordinal))"
+    ),
+    pubmed_identifier_citation_ordinal = "ALTER TABLE pubmed_article_identifiers ADD COLUMN IF NOT EXISTS citation_ordinal UBIGINT",
     records = paste(
       "CREATE TABLE IF NOT EXISTS clinvar (",
       "release_id TEXT NOT NULL, record_kind TEXT NOT NULL, record_key TEXT NOT NULL,",
@@ -318,6 +365,97 @@ rclinvarbitration_schema_sql <- function() {
       "FROM clinvar_text t",
       "LEFT JOIN clinvar_scv_assertions s ON s.release_id = t.release_id",
       "AND s.assertion_entity_id = t.scv_entity_id"
+    ),
+    pubmed_article_events = paste(
+      "CREATE OR REPLACE VIEW pubmed_article_events AS SELECT a.*, s.source_ordinal,",
+      "s.source_applied_at FROM pubmed_articles a JOIN pubmed_sources s USING (source_id)"
+    ),
+    pubmed_literature_snapshots = paste(
+      "CREATE OR REPLACE VIEW pubmed_literature_snapshots AS SELECT",
+      "source_provider AS provider_id, source_id AS snapshot_id,",
+      "source_ordinal AS high_water_ordinal, source_applied_at AS effective_at",
+      "FROM pubmed_sources"
+    ),
+    pubmed_literature_article_versions = paste(
+      "CREATE OR REPLACE VIEW pubmed_literature_article_versions AS SELECT",
+      "s.source_provider AS provider_id, a.pmid AS article_id, a.pmid,",
+      "a.source_id AS version_id, s.source_ordinal, a.is_deleted, a.article_title,",
+      "a.publication_date, a.source_date FROM pubmed_articles a",
+      "JOIN pubmed_sources s USING (source_id)"
+    ),
+    pubmed_literature_sections = paste(
+      "CREATE OR REPLACE VIEW pubmed_literature_sections AS",
+      "SELECT s.source_provider AS provider_id, a.pmid AS article_id, a.pmid,",
+      "a.source_id AS version_id, s.source_ordinal, 'title' AS section,",
+      "CAST(NULL AS TEXT) AS subsection, a.article_title AS text",
+      "FROM pubmed_articles a JOIN pubmed_sources s USING (source_id)",
+      "WHERE a.article_title IS NOT NULL AND trim(a.article_title) <> ''",
+      "UNION ALL SELECT s.source_provider AS provider_id, a.pmid AS article_id, a.pmid,",
+      "a.source_id AS version_id, s.source_ordinal, 'abstract' AS section,",
+      "a.section AS subsection, a.text FROM pubmed_abstracts a",
+      "JOIN pubmed_sources s USING (source_id)"
+    ),
+    pubmed_current_articles = paste(
+      "CREATE OR REPLACE VIEW pubmed_current_articles AS WITH ranked AS (SELECT",
+      "a.*, s.source_ordinal, s.source_applied_at, row_number() OVER (PARTITION BY a.pmid",
+      "ORDER BY s.source_ordinal DESC) AS source_rank FROM pubmed_articles a",
+      "JOIN pubmed_sources s USING (source_id)) SELECT * EXCLUDE (source_rank) FROM ranked",
+      "WHERE source_rank = 1 AND NOT is_deleted"
+    ),
+    pubmed_articles_as_of = paste(
+      "CREATE OR REPLACE MACRO pubmed_articles_as_of(requested_source_id) AS TABLE",
+      "WITH cutoff AS (SELECT source_ordinal FROM pubmed_sources",
+      "WHERE source_id = requested_source_id), ranked AS (SELECT a.*, s.source_ordinal,",
+      "s.source_applied_at, row_number() OVER (PARTITION BY a.pmid ORDER BY",
+      "s.source_ordinal DESC) AS source_rank FROM pubmed_articles a",
+      "JOIN pubmed_sources s USING (source_id) JOIN cutoff c",
+      "ON s.source_ordinal <= c.source_ordinal) SELECT * EXCLUDE (source_rank)",
+      "FROM ranked WHERE source_rank = 1 AND NOT is_deleted"
+    ),
+    pubmed_current_abstracts = paste(
+      "CREATE OR REPLACE VIEW pubmed_current_abstracts AS SELECT c.* FROM pubmed_abstracts c",
+      "JOIN pubmed_current_articles a USING (source_id, pmid)"
+    ),
+    pubmed_current_article_identifiers = paste(
+      "CREATE OR REPLACE VIEW pubmed_current_article_identifiers AS SELECT c.*",
+      "FROM pubmed_article_identifiers c JOIN pubmed_current_articles a USING (source_id, pmid)"
+    ),
+    pubmed_current_mesh_terms = paste(
+      "CREATE OR REPLACE VIEW pubmed_current_mesh_terms AS SELECT c.* FROM pubmed_mesh_terms c",
+      "JOIN pubmed_current_articles a USING (source_id, pmid)"
+    ),
+    pubmed_current_keywords = paste(
+      "CREATE OR REPLACE VIEW pubmed_current_keywords AS SELECT c.* FROM pubmed_keywords c",
+      "JOIN pubmed_current_articles a USING (source_id, pmid)"
+    ),
+    pubmed_abstracts_as_of = paste(
+      "CREATE OR REPLACE MACRO pubmed_abstracts_as_of(requested_source_id) AS TABLE",
+      "SELECT c.* FROM pubmed_abstracts c JOIN pubmed_articles_as_of(requested_source_id) a",
+      "USING (source_id, pmid)"
+    ),
+    pubmed_article_identifiers_as_of = paste(
+      "CREATE OR REPLACE MACRO pubmed_article_identifiers_as_of(requested_source_id) AS TABLE",
+      "SELECT c.* FROM pubmed_article_identifiers c",
+      "JOIN pubmed_articles_as_of(requested_source_id) a USING (source_id, pmid)"
+    ),
+    pubmed_mesh_terms_as_of = paste(
+      "CREATE OR REPLACE MACRO pubmed_mesh_terms_as_of(requested_source_id) AS TABLE",
+      "SELECT c.* FROM pubmed_mesh_terms c JOIN pubmed_articles_as_of(requested_source_id) a",
+      "USING (source_id, pmid)"
+    ),
+    pubmed_keywords_as_of = paste(
+      "CREATE OR REPLACE MACRO pubmed_keywords_as_of(requested_source_id) AS TABLE",
+      "SELECT c.* FROM pubmed_keywords c JOIN pubmed_articles_as_of(requested_source_id) a",
+      "USING (source_id, pmid)"
+    ),
+    clinvar_pubmed_articles = paste(
+      "CREATE OR REPLACE VIEW clinvar_pubmed_articles AS SELECT",
+      "l.release_id AS clinvar_release_id, l.vcv_accession, l.rcv_entity_id,",
+      "l.scv_entity_id, l.citation_id, p.pmid, p.source_id AS pubmed_source_id,",
+      "p.source_kind AS pubmed_source_kind, p.article_title, p.publication_date,",
+      "p.source_date FROM clinvar_literature_links l JOIN pubmed_current_articles p",
+      "ON lower(trim(coalesce(l.source, ''))) IN ('pubmed', 'pmid')",
+      "AND trim(l.identifier) = p.pmid"
     ),
     rclinvarbitration_policy_sql(),
     gene_summaries = paste(

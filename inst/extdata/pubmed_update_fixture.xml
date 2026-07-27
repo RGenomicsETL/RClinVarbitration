@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation Status="MEDLINE" Owner="NLM">
+      <PMID Version="1">1001</PMID>
+      <Article>
+        <Journal>
+          <JournalIssue CitedMedium="Electronic">
+            <PubDate><Year>2021</Year><Month>Feb</Month><Day>04</Day></PubDate>
+          </JournalIssue>
+        </Journal>
+        <ArticleTitle>Updated article title</ArticleTitle>
+        <Abstract>
+          <AbstractText Label="RESULTS">Updated results.</AbstractText>
+        </Abstract>
+      </Article>
+      <MeshHeadingList>
+        <MeshHeading><DescriptorName UI="D000002">Temefos</DescriptorName></MeshHeading>
+      </MeshHeadingList>
+      <KeywordList Owner="NOTNLM"><Keyword>updated keyword</Keyword></KeywordList>
+    </MedlineCitation>
+    <PubmedData>
+      <History>
+        <PubMedPubDate PubStatus="pubmed"><Year>2021</Year><Month>Feb</Month><Day>05</Day></PubMedPubDate>
+      </History>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">1001</ArticleId>
+        <ArticleId IdType="pmc">PMC1001</ArticleId>
+      </ArticleIdList>
+    </PubmedData>
+  </PubmedArticle>
+</PubmedArticleSet>

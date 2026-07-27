@@ -2,7 +2,7 @@
 % Please edit documentation in R/connection.R
 \name{rclinvarbitration_enable}
 \alias{rclinvarbitration_enable}
-\title{Enable native ClinVar XML scanning on a DuckDB connection}
+\title{Enable native ClinVar and PubMed XML scanning on a DuckDB connection}
 \usage{
 rclinvarbitration_enable(con, extension_path = NULL)
 }
@@ -16,9 +16,12 @@ rclinvarbitration_enable(con, extension_path = NULL)
 }
 \description{
 Loads the package-owned \code{rclinvarbitration} extension. Its native
-\code{clinvar_xml_entities(path)} table function and \code{rclinvar_json_field()}
-scalar are the compact, ClinVar-specific one-pass staging surface used by
-\code{\link[=rclinvarbitration_import_xml]{rclinvarbitration_import_xml()}}. The connection must have been created with
+\code{clinvar_xml_entities(path)} and \code{rclinvarbitration_pubmed_xml_rows(path)}
+table functions are concrete one-pass staging surfaces for
+\code{\link[=rclinvarbitration_import_xml]{rclinvarbitration_import_xml()}} and
+\code{rclinvarbitration_import_pubmed()}. \code{rclinvar_json_field()} remains the
+compact ClinVar field scalar. The
+connection must have been created with
 \code{duckdb::duckdb(config = list(allow_unsigned_extensions = "true"))}, as for
 any locally built DuckDB extension.
 }

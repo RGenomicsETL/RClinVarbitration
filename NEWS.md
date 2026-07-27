@@ -1,3 +1,28 @@
+# RClinVarbitration development
+
+- Keep `release_id` as a required tidy-Parquet column and validate it together
+  with policy/profile identity before DuckLake publication.
+- Reject an unconfigured flat-import policy profile before source-row or
+  Parquet-output side effects.
+- Add `rclinvarbitration_disease_release_transitions()` for fixed-profile,
+  disease-level inserted, withdrawn, changed, and unchanged release facts.
+- Add concrete streaming PubMed baseline/update XML ingestion with
+  PMID-authoritative scalar article, abstract, identifier, MeSH, keyword, and
+  cited-identifier relations. `DeleteCitation` is explicit current state.
+- Make PubMed source facts append-only and source-versioned. Typed source
+  ordering drives current and `*_as_of(source_id)` relations; deletion events
+  hide later facts without erasing prior cutoffs.
+- Parse tested `PubmedBookArticle` and multi-PMID `DeleteCitation` shapes,
+  validate authoritative PMID/ArticleId agreement, and retain reference
+  ordinals for cited identifiers.
+- Emit disease-level tidy `disease_decision` policy rows alongside, rather
+  than instead of, allele decision rows; transition output now has old/new
+  disease identifiers and `classification_changed`.
+- Add read-only all-version `pubmed_literature_*` projections as the canonical
+  source handoff to ducksemantics, without a ducksemantics dependency or a
+  second temporal store. Canonical section rows now include normalized title
+  sections and structured-abstract subsections.
+
 # RClinVarbitration 0.1.1
 
 - Replace the release-scale multi-table layout with one scalar `clinvar` table.
@@ -35,9 +60,9 @@
   contiguous block. Staging no longer leaves its high-water mark as free
   blocks in the durable database. A legacy-layout guard prevents old base
   tables from being overwritten by compatibility views.
-- Give every canonical row a stable `record_key`. Tidy Parquet omits the
-  repeated release label, keeps the release receipt separately, contains no
-  nested columns, and is compared exactly by DuckLake.
+- Give every canonical row a stable `record_key`. Tidy Parquet retains the
+  repeated release label as `release_id`, returns the release receipt
+  separately, contains no nested columns, and is compared exactly by DuckLake.
 - Add `clinvar_gene_disease_summaries` with descriptive, policy-versioned
   ClinVar evidence strata. These support retrieval and temporal reanalysis but
   are not represented as gene-validity classifications.

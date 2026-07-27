@@ -16,7 +16,8 @@ Description: Joins official 'ClinVar' variant and submission reports directly
     ClinVarbitration policy is implemented in SQL over those reports. An
     optional package-owned native extension streams VCV XML into the same
     table when richer observations, conditions, citations, attributes, and
-    attributable evidence text are required.
+    attributable evidence text are required, and streams PubMed baseline or
+    update XML into scalar PMID-authoritative literature relations.
 License: GPL (>= 2)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

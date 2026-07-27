@@ -47,9 +47,10 @@ Genomics ClinVarbitration's \code{clinvar_decisions.tsv}: \code{contig}, \code{p
 \code{schema = "tidy"} writes the canonical scalar \code{clinvar} relation.
 \code{record_kind} distinguishes variations, alleles, assembly locations, source
 assertions, conditions, genes, observations, citations, text, attributes,
-and policy decisions. Every row has its own stable \code{record_key}; repeated
-source elements are rows rather than lists or structs. \code{release_id} is kept
-in the release receipt rather than copied into every Parquet row.
+allele policy decisions, and disease-level \code{disease_decision} policy rows.
+Every row has its own stable \code{record_key}; repeated source elements are rows
+rather than lists or structs. \code{release_id} is a
+required Parquet column, so a reopened export retains its source identity.
 
 The compatibility source is the allele-level policy view joined through
 \code{clinvar_vcf}. Both GRCh37 and GRCh38 are supported, including distinct X/Y

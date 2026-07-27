@@ -15,6 +15,7 @@ if (!ducklake_available) {
 }
 
 write_export <- function(rows, release_id) {
+  if (!"release_id" %in% names(rows)) rows$release_id <- release_id
   DBI::dbWriteTable(
     con, "publication_rows", rows,
     temporary = TRUE, overwrite = TRUE
@@ -80,7 +81,7 @@ publication_v2 <- rclinvarbitration_publish_ducklake(
 )
 expect_equal(publication_v2$input_rows, 3)
 expect_equal(publication_v2$inserted, 1)
-expect_equal(publication_v2$updated, 1)
+expect_equal(publication_v2$updated, 2)
 expect_equal(publication_v2$deleted, 1)
 
 published <- DBI::dbGetQuery(
@@ -116,10 +117,24 @@ changes <- DBI::dbGetQuery(
     ") ORDER BY record_key, change_type"
   )
 )
-expect_false("key-a" %in% changes$record_key)
+expect_true("key-a" %in% changes$record_key)
 expect_equal(
   sort(changes$change_type),
-  sort(c("delete", "insert", "update_postimage", "update_preimage"))
+  sort(c(
+    "delete", "insert", "update_postimage", "update_postimage",
+    "update_preimage", "update_preimage"
+  ))
+)
+expect_equal(
+  DBI::dbGetQuery(
+    con,
+    paste0(
+      "SELECT DISTINCT release_id FROM ",
+      as.character(DBI::dbQuoteIdentifier(con, lake_name)),
+      ".main.clinvar"
+    )
+  )$release_id,
+  "ncbi-vcv-test-2"
 )
 
 rows_duplicate <- rows_v2[c(1L, 1L), ]
@@ -141,6 +156,17 @@ expect_equal(
   )$n,
   3
 )
+
+rows_wrong_release <- rows_v2
+rows_wrong_release$release_id <- "wrong-release"
+export_wrong_release <- write_export(rows_wrong_release, "expected-release")
+expect_error(
+  rclinvarbitration_publish_ducklake(
+    con, export_wrong_release, ducklake_name = lake_name
+  ),
+  "release identity"
+)
+unlink(export_wrong_release$path)
 
 unlink(c(export_v1$path, export_v2$path, export_duplicate$path))
 DBI::dbDisconnect(con, shutdown = TRUE)

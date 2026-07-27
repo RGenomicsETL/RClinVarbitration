@@ -306,6 +306,9 @@ rclinvarbitration_import_flat <- function(
   }
   assembly <- unique(assembly)
   rclinvarbitration_init(con)
+  # Policy profile identity is part of the imported decision facts. Check it
+  # before clearing a release, inserting source rows, or creating Parquet.
+  rclinvarbitration_validate_profile(con, profile_id)
   release_sql <- rclinvarbitration_sql_string(release_id)
   if (DBI::dbGetQuery(
       con,
@@ -371,7 +374,7 @@ rclinvarbitration_import_flat <- function(
     DBI::dbExecute(
       con,
       paste0(
-        "COPY (SELECT * EXCLUDE (release_id) FROM clinvar WHERE release_id = ",
+        "COPY (SELECT * FROM clinvar WHERE release_id = ",
         release_sql, ") TO ",
         rclinvarbitration_sql_string(parquet_path),
         " (FORMAT PARQUET, COMPRESSION ZSTD)"
