@@ -576,7 +576,7 @@ typedef struct {
 
 // New configuration options functions
 #ifdef DUCKDB_EXTENSION_API_VERSION_UNSTABLE
-	duckdb_config_option (*duckdb_create_config_option)();
+	duckdb_config_option (*duckdb_create_config_option)(void);
 	void (*duckdb_destroy_config_option)(duckdb_config_option *option);
 	void (*duckdb_config_option_set_name)(duckdb_config_option option, const char *name);
 	void (*duckdb_config_option_set_type)(duckdb_config_option option, duckdb_logical_type type);
@@ -591,7 +591,7 @@ typedef struct {
 
 // API to define custom copy functions
 #ifdef DUCKDB_EXTENSION_API_VERSION_UNSTABLE
-	duckdb_copy_function (*duckdb_create_copy_function)();
+	duckdb_copy_function (*duckdb_create_copy_function)(void);
 	void (*duckdb_copy_function_set_name)(duckdb_copy_function copy_function, const char *name);
 	void (*duckdb_copy_function_set_extra_info)(duckdb_copy_function copy_function, void *extra_info,
 	                                            duckdb_delete_callback_t destructor);
@@ -662,7 +662,7 @@ typedef struct {
 	duckdb_state (*duckdb_file_system_open)(duckdb_file_system file_system, const char *path,
 	                                        duckdb_file_open_options options, duckdb_file_handle *out_file);
 	duckdb_error_data (*duckdb_file_system_error_data)(duckdb_file_system file_system);
-	duckdb_file_open_options (*duckdb_create_file_open_options)();
+	duckdb_file_open_options (*duckdb_create_file_open_options)(void);
 	duckdb_state (*duckdb_file_open_options_set_flag)(duckdb_file_open_options options, duckdb_file_flag flag,
 	                                                  bool value);
 	void (*duckdb_destroy_file_open_options)(duckdb_file_open_options *options);
@@ -684,7 +684,7 @@ typedef struct {
 
 // API to register a custom log storage.
 #ifdef DUCKDB_EXTENSION_API_VERSION_UNSTABLE
-	duckdb_log_storage (*duckdb_create_log_storage)();
+	duckdb_log_storage (*duckdb_create_log_storage)(void);
 	void (*duckdb_destroy_log_storage)(duckdb_log_storage *log_storage);
 	void (*duckdb_log_storage_set_write_log_entry)(duckdb_log_storage log_storage,
 	                                               duckdb_logger_write_log_entry_t function);

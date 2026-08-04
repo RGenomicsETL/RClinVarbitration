@@ -4,12 +4,16 @@
   "headers": {
     "duckdb.h": {
       "path": "tools/ext/duckdb_capi/v1.5.0/duckdb.h",
-      "md5": "02f55c8a87db32cdc23bddbcf34647e6",
+      "md5": "6dbce56ce29ff28a5ecd1a2967f73084",
       "repairs": {
       "duckdb_create_instance_cache": 1,
       "duckdb_library_version": 1,
       "duckdb_config_count": 1,
       "duckdb_vector_size": 1,
+      "duckdb_create_file_open_options": 1,
+      "duckdb_create_config_option": 1,
+      "duckdb_create_copy_function": 1,
+      "duckdb_create_log_storage": 1,
       "duckdb_create_null_value": 1,
       "duckdb_create_scalar_function": 1,
       "duckdb_create_aggregate_function": 1,
@@ -19,11 +23,15 @@
     },
     "duckdb_extension.h": {
       "path": "tools/ext/duckdb_capi/v1.5.0/duckdb_extension.h",
-      "md5": "e711a206fc4639871aa42b996707676c",
+      "md5": "fc81e120c415ca07af8b49959c4fb4b3",
       "repairs": {
       "duckdb_library_version": 1,
       "duckdb_config_count": 1,
       "duckdb_vector_size": 1,
+      "duckdb_create_file_open_options": 1,
+      "duckdb_create_config_option": 1,
+      "duckdb_create_copy_function": 1,
+      "duckdb_create_log_storage": 1,
       "duckdb_create_null_value": 1,
       "duckdb_create_scalar_function": 1,
       "duckdb_create_aggregate_function": 1,

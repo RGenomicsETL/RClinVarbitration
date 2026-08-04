@@ -123,6 +123,22 @@ repair_duckdb_h <- function(text) {
       "DUCKDB_C_API idx_t duckdb_vector_size();",
       "DUCKDB_C_API idx_t duckdb_vector_size(void);"
     ),
+    duckdb_create_file_open_options = c(
+      "DUCKDB_C_API duckdb_file_open_options duckdb_create_file_open_options();",
+      "DUCKDB_C_API duckdb_file_open_options duckdb_create_file_open_options(void);"
+    ),
+    duckdb_create_config_option = c(
+      "DUCKDB_C_API duckdb_config_option duckdb_create_config_option();",
+      "DUCKDB_C_API duckdb_config_option duckdb_create_config_option(void);"
+    ),
+    duckdb_create_copy_function = c(
+      "DUCKDB_C_API duckdb_copy_function duckdb_create_copy_function();",
+      "DUCKDB_C_API duckdb_copy_function duckdb_create_copy_function(void);"
+    ),
+    duckdb_create_log_storage = c(
+      "DUCKDB_C_API duckdb_log_storage duckdb_create_log_storage();",
+      "DUCKDB_C_API duckdb_log_storage duckdb_create_log_storage(void);"
+    ),
     duckdb_create_null_value = c(
       "DUCKDB_C_API duckdb_value duckdb_create_null_value();",
       "DUCKDB_C_API duckdb_value duckdb_create_null_value(void);"
@@ -159,6 +175,22 @@ repair_duckdb_extension_h <- function(text) {
     duckdb_vector_size = c(
       "idx_t (*duckdb_vector_size)();",
       "idx_t (*duckdb_vector_size)(void);"
+    ),
+    duckdb_create_file_open_options = c(
+      "duckdb_file_open_options (*duckdb_create_file_open_options)();",
+      "duckdb_file_open_options (*duckdb_create_file_open_options)(void);"
+    ),
+    duckdb_create_config_option = c(
+      "duckdb_config_option (*duckdb_create_config_option)();",
+      "duckdb_config_option (*duckdb_create_config_option)(void);"
+    ),
+    duckdb_create_copy_function = c(
+      "duckdb_copy_function (*duckdb_create_copy_function)();",
+      "duckdb_copy_function (*duckdb_create_copy_function)(void);"
+    ),
+    duckdb_create_log_storage = c(
+      "duckdb_log_storage (*duckdb_create_log_storage)();",
+      "duckdb_log_storage (*duckdb_create_log_storage)(void);"
     ),
     duckdb_create_null_value = c(
       "duckdb_value (*duckdb_create_null_value)();",

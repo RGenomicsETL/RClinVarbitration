@@ -106,11 +106,8 @@ else
   case "$OS/$ARCH" in
     Linux/x86_64) PLATFORMS=linux_amd64; SHARED_FLAGS='-shared -fPIC -Wl,--exclude-libs,ALL -Wl,-Bsymbolic-functions'; EXTRA_CFLAGS='' ;;
     Linux/aarch64|Linux/arm64) PLATFORMS=linux_arm64; SHARED_FLAGS='-shared -fPIC -Wl,--exclude-libs,ALL -Wl,-Bsymbolic-functions'; EXTRA_CFLAGS='' ;;
-    # DuckDB's exact v1.5 headers retain legacy empty-prototype declarations.
-    # Keep -Werror for package code while preventing current Apple Clang from
-    # rejecting that vendored-header-only diagnostic.
-    Darwin/x86_64) PLATFORMS=osx_amd64; SHARED_FLAGS='-shared -fPIC -undefined dynamic_lookup -Wl,-exported_symbol,_rclinvarbitration_init_c_api'; EXTRA_CFLAGS='-Wno-error=strict-prototypes' ;;
-    Darwin/arm64) PLATFORMS=osx_arm64; SHARED_FLAGS='-shared -fPIC -undefined dynamic_lookup -Wl,-exported_symbol,_rclinvarbitration_init_c_api'; EXTRA_CFLAGS='-Wno-error=strict-prototypes' ;;
+    Darwin/x86_64) PLATFORMS=osx_amd64; SHARED_FLAGS='-shared -fPIC -undefined dynamic_lookup -Wl,-exported_symbol,_rclinvarbitration_init_c_api'; EXTRA_CFLAGS='' ;;
+    Darwin/arm64) PLATFORMS=osx_arm64; SHARED_FLAGS='-shared -fPIC -undefined dynamic_lookup -Wl,-exported_symbol,_rclinvarbitration_init_c_api'; EXTRA_CFLAGS='' ;;
     # CRAN release builds currently report windows_amd64 while R-devel's
     # MinGW toolchain reports windows_amd64_mingw. The machine code is the
     # same, but DuckDB validates the embedded platform metadata exactly.

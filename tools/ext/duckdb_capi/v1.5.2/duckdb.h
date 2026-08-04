@@ -5585,7 +5585,7 @@ Creates a new file open options instance with blank settings.
 
 * @return The new file open options instance. Must be destroyed with `duckdb_destroy_file_open_options`.
 */
-DUCKDB_C_API duckdb_file_open_options duckdb_create_file_open_options();
+DUCKDB_C_API duckdb_file_open_options duckdb_create_file_open_options(void);
 
 /*!
 Sets a specific flag in the file open options.
@@ -5696,7 +5696,7 @@ Creates a configuration option instance.
 
 * @return The resulting configuration option instance. Must be destroyed with `duckdb_destroy_config_option`.
 */
-DUCKDB_C_API duckdb_config_option duckdb_create_config_option();
+DUCKDB_C_API duckdb_config_option duckdb_create_config_option(void);
 
 /*!
 Destroys the given configuration option instance.
@@ -5784,7 +5784,7 @@ The return value must be destroyed with `duckdb_destroy_copy_function`.
 
 * @return The copy function object.
 */
-DUCKDB_C_API duckdb_copy_function duckdb_create_copy_function();
+DUCKDB_C_API duckdb_copy_function duckdb_create_copy_function(void);
 
 /*!
 Sets the name of the copy function.
@@ -6211,7 +6211,7 @@ Creates a new log storage object.
 
 * @return A log storage object. Must be destroyed with `duckdb_destroy_log_storage`.
 */
-DUCKDB_C_API duckdb_log_storage duckdb_create_log_storage();
+DUCKDB_C_API duckdb_log_storage duckdb_create_log_storage(void);
 
 /*!
 Destroys a log storage object.
