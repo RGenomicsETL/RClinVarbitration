@@ -1,6 +1,6 @@
 # Keep this release artifact name in sync with DESCRIPTION.
 PKG = RClinVarbitration
-VER = 0.1.1
+VER = 0.1.1.9000
 TAR = $(PKG)_$(VER).tar.gz
 
 .PHONY: rd build install rdm errata site test check clean
