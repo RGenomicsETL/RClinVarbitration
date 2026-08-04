@@ -28,6 +28,7 @@ reference:
       - rclinvarbitration_init
       - rclinvarbitration_import_flat
       - rclinvarbitration_import_xml
+      - rclinvarbitration_import_pubmed
   - title: Parquet outputs
     contents:
       - rclinvarbitration_export_clinvarbitration_parquet
@@ -38,3 +39,4 @@ reference:
       - rclinvarbitration_schema_sql
       - rclinvarbitration_policy_version
       - rclinvarbitration_policy_sql
+      - rclinvarbitration_disease_release_transitions
