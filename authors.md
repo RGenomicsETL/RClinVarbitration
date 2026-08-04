@@ -16,13 +16,13 @@ Source:
 [`DESCRIPTION`](https://github.com/RGenomicsETL/RClinVarbitration/blob/main/DESCRIPTION)
 
 Toure S (2026). *RClinVarbitration: Build Tidy ClinVar Evidence and
-Arbitration Tables*. R package version 0.1.1,
+Arbitration Tables*. R package version 0.1.1.9000,
 <https://github.com/RGenomicsETL/RClinVarbitration>.
 
     @Manual{,
       title = {RClinVarbitration: Build Tidy ClinVar Evidence and Arbitration Tables},
       author = {Sounkou Mahamane Toure},
       year = {2026},
-      note = {R package version 0.1.1},
+      note = {R package version 0.1.1.9000},
       url = {https://github.com/RGenomicsETL/RClinVarbitration},
     }
