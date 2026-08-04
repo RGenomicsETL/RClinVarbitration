@@ -114,9 +114,10 @@ or the canonical scalar evidence relation.</p></dd>
     <p><code>schema = "tidy"</code> writes the canonical scalar <code>clinvar</code> relation.
 <code>record_kind</code> distinguishes variations, alleles, assembly locations, source
 assertions, conditions, genes, observations, citations, text, attributes,
-and policy decisions. Every row has its own stable <code>record_key</code>; repeated
-source elements are rows rather than lists or structs. <code>release_id</code> is kept
-in the release receipt rather than copied into every Parquet row.</p>
+allele policy decisions, and disease-level <code>disease_decision</code> policy rows.
+Every row has its own stable <code>record_key</code>; repeated source elements are rows
+rather than lists or structs. <code>release_id</code> is a
+required Parquet column, so a reopened export retains its source identity.</p>
 <p>The compatibility source is the allele-level policy view joined through
 <code>clinvar_vcf</code>. Both GRCh37 and GRCh38 are supported, including distinct X/Y
 locations for one AlleleID. Primary <code>NC_</code> placements take precedence when

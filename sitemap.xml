@@ -1,5 +1,6 @@
 <urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/404.html</loc></url>
+<url><loc>https://rgenomicsetl.github.io/RClinVarbitration/ARCHITECTURE.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/articles/arbitration-algorithm.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/articles/index.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/articles/semantic-ducklake-variantstory.html</loc></url>
@@ -9,11 +10,13 @@
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/news/index.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/reference/RClinVarbitration-package.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/reference/index.html</loc></url>
+<url><loc>https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_disease_release_transitions.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_download_clinvar.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_enable.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_export_clinvarbitration_parquet.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_extension_path.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_import_flat.html</loc></url>
+<url><loc>https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_import_pubmed.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_import_xml.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_init.html</loc></url>
 <url><loc>https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_policy_sql.html</loc></url>

@@ -63,10 +63,11 @@ A named list describing the written Parquet file, invisibly.
 `schema = "tidy"` writes the canonical scalar `clinvar` relation.
 `record_kind` distinguishes variations, alleles, assembly locations,
 source assertions, conditions, genes, observations, citations, text,
-attributes, and policy decisions. Every row has its own stable
+attributes, allele policy decisions, and disease-level
+`disease_decision` policy rows. Every row has its own stable
 `record_key`; repeated source elements are rows rather than lists or
-structs. `release_id` is kept in the release receipt rather than copied
-into every Parquet row.
+structs. `release_id` is a required Parquet column, so a reopened export
+retains its source identity.
 
 The compatibility source is the allele-level policy view joined through
 `clinvar_vcf`. Both GRCh37 and GRCh38 are supported, including distinct

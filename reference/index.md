@@ -7,13 +7,15 @@
 - [`rclinvarbitration_extension_path()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_extension_path.md)
   : Locate a version-matched RClinVarbitration DuckDB extension
 - [`rclinvarbitration_enable()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_enable.md)
-  : Enable native ClinVar XML scanning on a DuckDB connection
+  : Enable native ClinVar and PubMed XML scanning on a DuckDB connection
 - [`rclinvarbitration_init()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_init.md)
   : Initialize the ClinVar relational schema
 - [`rclinvarbitration_import_flat()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_import_flat.md)
   : Import the official ClinVar flat reports as one tidy table
 - [`rclinvarbitration_import_xml()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_import_xml.md)
   : Stream a ClinVar VCV XML release into one relational DuckDB table
+- [`rclinvarbitration_import_pubmed()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_import_pubmed.md)
+  : Import a PubMed baseline or update XML source
 
 ## Parquet outputs
 
@@ -33,3 +35,5 @@
   : Current ClinVarbitration policy version
 - [`rclinvarbitration_policy_sql()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_policy_sql.md)
   : ClinVarbitration policy SQL
+- [`rclinvarbitration_disease_release_transitions()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_disease_release_transitions.md)
+  : Compare fixed-policy disease decisions between two ClinVar releases

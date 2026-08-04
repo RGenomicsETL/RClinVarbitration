@@ -41,9 +41,10 @@
   one contiguous block. Staging no longer leaves its high-water mark as
   free blocks in the durable database. A legacy-layout guard prevents
   old base tables from being overwritten by compatibility views.
-- Give every canonical row a stable `record_key`. Tidy Parquet omits the
-  repeated release label, keeps the release receipt separately, contains
-  no nested columns, and is compared exactly by DuckLake.
+- Give every canonical row a stable `record_key`. Tidy Parquet retains
+  the repeated release label as `release_id`, returns the release
+  receipt separately, contains no nested columns, and is compared
+  exactly by DuckLake.
 - Add `clinvar_gene_disease_summaries` with descriptive,
   policy-versioned ClinVar evidence strata. These support retrieval and
   temporal reanalysis but are not represented as gene-validity

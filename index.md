@@ -173,10 +173,17 @@ changes <- ducklake::get_table_changes(
 )
 ```
 
-The function initializes persistent staging once, validates keys and
-policy identity, and commits inserts, updates, and withdrawals as one
-snapshot. Unchanged rows are untouched. DuckLake’s change feed is the
-delta authority.
+The function initializes persistent staging once, validates keys,
+`release_id`, and policy identity, and commits inserts, updates, and
+withdrawals as one snapshot. Release identity is part of every tidy row,
+so republishing a key in a later release is a material update even when
+its other facts are unchanged. DuckLake’s change feed is the delta
+authority.
+
+[`rclinvarbitration_disease_release_transitions()`](https://rgenomicsetl.github.io/RClinVarbitration/reference/rclinvarbitration_disease_release_transitions.md)
+compares two imported releases under one configured policy profile. Its
+`classification_changed` column selects retained allele-and-disease
+reclassifications without adding case ranking or evaluation metrics.
 
 Complete-release row counts and storage depend on the selected source
 path: the compact flat reports contain the ordinary arbitration
@@ -222,7 +229,47 @@ writes the same scalar `clinvar` table as the flat import. Compatibility
 relation names such as `clinvar_locations` and `clinvar_scv_assertions`
 are views over that table. XML-derived policy decisions remain views
 until an explicit Parquet or DuckLake publication asks to materialize
-them.
+them. Tidy export additionally emits scalar `disease_decision` rows from
+the fixed disease policy relation; these retain disease key, source
+database/identifier/name, policy/profile, allele, and release identity
+without replacing allele `decision` rows.
+
+## PubMed source history
+
+The same package-owned extension streams PubMed baseline and update XML.
+PMID is authoritative; DOI and PMCID remain identifiers. Imports append
+immutable source-versioned facts rather than replacing earlier rows.
+`pubmed_sources` assigns each source a typed `source_ordinal`;
+`pubmed_current_*` relations select the latest visible event, while
+table macros such as `pubmed_articles_as_of(source_id)` and
+`pubmed_abstracts_as_of(source_id)` select a historical cutoff.
+`DeleteCitation` appends deletion events, which hide an article at that
+and later cutoffs without erasing earlier facts.
+
+For direct semantic consumption, the read-only
+`pubmed_literature_snapshots`, `pubmed_literature_article_versions`, and
+`pubmed_literature_sections` views project **all** source events with
+provider, snapshot/version, and typed source order. The sections view
+emits article titles as `section = "title"` with `subsection = NULL`,
+and structured abstracts as `section = "abstract"` with the original
+PubMed label in `subsection`. They are the canonical source handoff to
+ducksemantics: RClinVarbitration owns source identity and temporal
+facts; ducksemantics consumes the relations for retrieval/grounding
+without a package dependency, cache, caller-built temporal model, or
+shadow copy.
+
+``` r
+
+rclinvarbitration_enable(con)
+rclinvarbitration_import_pubmed(con, "pubmed-baseline.xml.gz", "baseline", "baseline")
+rclinvarbitration_import_pubmed(con, "pubmed-update.xml.gz", "update", "update")
+dbGetQuery(con, "SELECT * FROM pubmed_articles_as_of('baseline')")
+```
+
+The tested scanner handles `PubmedArticle`, `PubmedBookArticle`, and
+multi-PMID `DeleteCitation` records. It is not a full PubMed DTD
+projection; Europe PMC retrieval and demand-driven full text remain
+unimplemented.
 
 ## Comparison with upstream ClinVarbitration
 
